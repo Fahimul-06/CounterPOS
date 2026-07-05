@@ -138,9 +138,16 @@ export default function SignIn() {
 
               <p className="text-center text-sm text-slate-500">
                 New here?{' '}
-                <a href="/signup" className="font-semibold text-brand-600 hover:text-brand-700">
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.history.pushState({}, '', '/signup');
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                  }}
+                  className="font-semibold text-brand-600 hover:text-brand-700"
+                >
                   Create an account
-                </a>
+                </button>
               </p>
             </form>
           </div>
