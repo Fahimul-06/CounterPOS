@@ -33,6 +33,8 @@ export interface Product {
   stock: number;
   sku: string | null;
   image_url: string | null;
+  expiry_date: string | null;
+  expiry_alert_days: number;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -94,6 +96,7 @@ export interface Medicine {
   strip_price: number;
   cost: number;
   barcode: string | null;
+  image_url: string | null;
   expiry_date: string;
   expiry_alert_days: number;
   is_active: boolean;

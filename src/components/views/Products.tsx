@@ -18,15 +18,33 @@ import {
 import { supabase } from '../../lib/supabase';
 import type { Product } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { formatMoney, classNames } from '../../lib/utils';
+import { formatMoney, formatShortDate, classNames } from '../../lib/utils';
 import { PageContainer, PageHeader, Card, Button, Spinner, EmptyState, Modal, ConfirmDialog, Badge } from '../ui/Shared';
 import Barcode from '../barcode/Barcode';
 import ImageDropzone from '../ui/ImageDropzone';
 
 type SortKey = 'name' | 'price' | 'stock' | 'created_at';
+type ProductExpiryStatus = 'expired' | 'expiring' | 'valid' | 'none';
 type SortDir = 'asc' | 'desc';
 
 const RESTAURANT_PRODUCT_CATEGORIES = ['Beverage', 'Meal', 'Dessert', 'Fast Food', 'Starter', 'Snack', 'Combo', 'Breakfast', 'Lunch', 'Dinner'];
+const SHOP_PRODUCT_CATEGORIES = ['Beverage', 'Grocery', 'Snacks', 'Personal Care', 'Household', 'Frozen', 'Dairy', 'Bakery', 'Other'];
+const DEPARTMENTAL_PRODUCT_CATEGORIES = ['Grocery', 'Beverage', 'Meal', 'Dessert', 'Personal Care', 'Household', 'Electronics', 'Stationery', 'Baby Care', 'Other'];
+
+function daysUntil(iso: string): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const exp = new Date(iso + 'T00:00:00');
+  return Math.round((exp.getTime() - today.getTime()) / 86400000);
+}
+
+function productExpiryStatus(p: Product): ProductExpiryStatus {
+  if (!p.expiry_date) return 'none';
+  const d = daysUntil(p.expiry_date);
+  if (d < 0) return 'expired';
+  if (d <= (p.expiry_alert_days ?? 30)) return 'expiring';
+  return 'valid';
+}
 
 export default function Products() {
   const { business } = useAuth();
@@ -101,6 +119,8 @@ export default function Products() {
     active: products.filter((p) => p.is_active).length,
     lowStock: products.filter((p) => p.is_active && p.stock > 0 && p.stock <= 5).length,
     outStock: products.filter((p) => p.is_active && p.stock === 0).length,
+    expiring: products.filter((p) => p.is_active && productExpiryStatus(p) === 'expiring').length,
+    expired: products.filter((p) => p.is_active && productExpiryStatus(p) === 'expired').length,
     inventoryValue: products.filter((p) => p.is_active).reduce((acc, p) => acc + Number(p.cost) * p.stock, 0),
   }), [products]);
 
@@ -202,11 +222,13 @@ export default function Products() {
       />
 
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 mb-5">
         <MiniStat label="Total products" value={String(stats.total)} icon={Package} tint="bg-brand-50 text-brand-600" />
         <MiniStat label="Active" value={String(stats.active)} icon={Tag} tint="bg-emerald-50 text-emerald-600" />
         <MiniStat label="Low stock" value={String(stats.lowStock)} icon={Boxes} tint="bg-amber-50 text-amber-600" />
         <MiniStat label="Out of stock" value={String(stats.outStock)} icon={AlertCircle} tint="bg-rose-50 text-rose-600" />
+        <MiniStat label="Expiring soon" value={String(stats.expiring)} icon={AlertCircle} tint="bg-amber-50 text-amber-600" />
+        <MiniStat label="Expired" value={String(stats.expired)} icon={AlertCircle} tint="bg-red-50 text-red-600" />
       </div>
 
       {/* Toolbar */}
@@ -284,6 +306,7 @@ export default function Products() {
                     <th className="text-right font-semibold px-4 py-3">
                       <SortButton label="Stock" active={sortKey === 'stock'} dir={sortDir} onClick={() => toggleSort('stock')} align="right" />
                     </th>
+                    <th className="text-left font-semibold px-4 py-3">Expiry</th>
                     <th className="text-left font-semibold px-4 py-3">Barcode</th>
                     <th className="text-right font-semibold px-4 py-3">Actions</th>
                   </tr>
@@ -313,6 +336,9 @@ export default function Products() {
                       <td className="px-4 py-3 text-right text-slate-500">{formatMoney(Number(p.cost), currency)}</td>
                       <td className="px-4 py-3 text-right">
                         <StockBadge stock={p.stock} />
+                      </td>
+                      <td className="px-4 py-3">
+                        <ProductExpiryBadge product={p} />
                       </td>
                       <td className="px-4 py-3">
                         {p.sku ? (
@@ -368,6 +394,7 @@ export default function Products() {
                         <div className="min-w-0">
                           <p className="font-semibold text-slate-900 truncate">{p.name}</p>
                           {p.category && <p className="text-xs text-slate-500 truncate">{p.category}</p>}
+                          <div className="mt-1"><ProductExpiryBadge product={p} compact /></div>
                         </div>
                         <p className="font-bold text-slate-900 shrink-0">{formatMoney(Number(p.price), currency)}</p>
                       </div>
@@ -462,6 +489,37 @@ function StockBadge({ stock }: { stock: number }) {
   return <Badge color="green">{stock} in stock</Badge>;
 }
 
+
+function ProductExpiryBadge({ product, compact = false }: { product: Product; compact?: boolean }) {
+  const status = productExpiryStatus(product);
+  if (status === 'none' || !product.expiry_date) {
+    return compact ? null : <span className="text-xs text-slate-400">No expiry</span>;
+  }
+  const days = daysUntil(product.expiry_date);
+  if (status === 'expired') {
+    return (
+      <div className="flex flex-col gap-0.5">
+        <Badge color="red">Expired</Badge>
+        {!compact && <span className="text-xs text-slate-400">{formatShortDate(product.expiry_date)}</span>}
+      </div>
+    );
+  }
+  if (status === 'expiring') {
+    return (
+      <div className="flex flex-col gap-0.5">
+        <Badge color="amber">In {days}d</Badge>
+        {!compact && <span className="text-xs text-slate-400">{formatShortDate(product.expiry_date)}</span>}
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-0.5">
+      <Badge color="green">Valid</Badge>
+      {!compact && <span className="text-xs text-slate-400">{formatShortDate(product.expiry_date)}</span>}
+    </div>
+  );
+}
+
 function SortButton({ label, active, dir, onClick, align = 'left' }: { label: string; active: boolean; dir: SortDir; onClick: () => void; align?: 'left' | 'right' }) {
   return (
     <button onClick={onClick} className={classNames('inline-flex items-center gap-1 hover:text-slate-700', align === 'right' && 'flex-row-reverse')}>
@@ -497,12 +555,21 @@ function ProductForm({
     stock: product ? String(product.stock) : '0',
     sku: product?.sku ?? '',
     image_url: product?.image_url ?? '',
+    expiry_date: product?.expiry_date ?? '',
+    expiry_alert_days: product ? String(product.expiry_alert_days ?? 30) : '30',
     is_active: product?.is_active ?? true,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const update = (k: keyof typeof form, v: string | boolean) => setForm((f) => ({ ...f, [k]: v }));
+
+  const defaultCategoryOptions = business?.category === 'restaurant'
+    ? RESTAURANT_PRODUCT_CATEGORIES
+    : business?.category === 'departmental_store'
+      ? DEPARTMENTAL_PRODUCT_CATEGORIES
+      : SHOP_PRODUCT_CATEGORIES;
+  const categoryOptions = [...new Set([...defaultCategoryOptions, ...categories])];
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -514,6 +581,11 @@ function ProductForm({
     }
     if (form.price === '' || Number(form.price) < 0) {
       setError('Please enter a valid price.');
+      return;
+    }
+    const alertDays = Number(form.expiry_alert_days);
+    if (!Number.isFinite(alertDays) || alertDays < 0) {
+      setError('Expiry alert days must be 0 or more.');
       return;
     }
     setSaving(true);
@@ -528,6 +600,8 @@ function ProductForm({
         stock: Number(form.stock) || 0,
         sku: form.sku.trim() || null,
         image_url: form.image_url.trim() || null,
+        expiry_date: form.expiry_date || null,
+        expiry_alert_days: alertDays,
         is_active: form.is_active,
         updated_at: new Date().toISOString(),
       };
@@ -576,32 +650,16 @@ function ProductForm({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-1.5">Category</label>
-            {business?.category === 'restaurant' ? (
-              <select
-                value={form.category}
-                onChange={(e) => update('category', e.target.value)}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
-              >
-                <option value="">Select category</option>
-                {[...new Set([...RESTAURANT_PRODUCT_CATEGORIES, ...categories])].map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            ) : (
-              <>
-                <input
-                  type="text"
-                  value={form.category}
-                  onChange={(e) => update('category', e.target.value)}
-                  list="product-categories"
-                  placeholder="e.g. Beverages"
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
-                />
-                <datalist id="product-categories">
-                  {categories.map((c) => <option key={c} value={c} />)}
-                </datalist>
-              </>
-            )}
+            <select
+              value={form.category}
+              onChange={(e) => update('category', e.target.value)}
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+            >
+              <option value="">Select category</option>
+              {categoryOptions.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-1.5">SKU / Barcode</label>
@@ -666,6 +724,31 @@ function ProductForm({
               step="1"
               className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
             />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Expiry date</label>
+            <input
+              type="date"
+              value={form.expiry_date}
+              onChange={(e) => update('expiry_date', e.target.value)}
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Expiry alert (days before)</label>
+            <input
+              type="number"
+              value={form.expiry_alert_days}
+              onChange={(e) => update('expiry_alert_days', e.target.value)}
+              min="0"
+              step="1"
+              placeholder="30"
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+            />
+            <p className="mt-1 text-xs text-slate-400">Alert when product is near expiry.</p>
           </div>
         </div>
 

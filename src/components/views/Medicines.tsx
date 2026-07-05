@@ -354,8 +354,12 @@ export default function Medicines() {
                       <tr key={m.id} className="hover:bg-slate-50/60 transition-colors">
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-lg bg-rose-50 grid place-items-center shrink-0">
-                              <Pill className="h-5 w-5 text-rose-500" />
+                            <div className="h-10 w-10 rounded-lg bg-rose-50 grid place-items-center overflow-hidden shrink-0">
+                              {m.image_url ? (
+                                <img src={m.image_url} alt={m.name} className="h-full w-full object-cover" />
+                              ) : (
+                                <Pill className="h-5 w-5 text-rose-500" />
+                              )}
                             </div>
                             <div className="min-w-0">
                               <p className="font-semibold text-slate-900 truncate">{m.name}</p>
@@ -430,8 +434,12 @@ export default function Medicines() {
                 return (
                   <div key={m.id} className="p-4">
                     <div className="flex items-start gap-3">
-                      <div className="h-12 w-12 rounded-lg bg-rose-50 grid place-items-center shrink-0">
-                        <Pill className="h-6 w-6 text-rose-500" />
+                      <div className="h-12 w-12 rounded-lg bg-rose-50 grid place-items-center overflow-hidden shrink-0">
+                        {m.image_url ? (
+                          <img src={m.image_url} alt={m.name} className="h-full w-full object-cover" />
+                        ) : (
+                          <Pill className="h-6 w-6 text-rose-500" />
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">

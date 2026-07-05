@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import type { Medicine } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { Modal, Button } from '../ui/Shared';
+import ImageDropzone from '../ui/ImageDropzone';
 import { MEDICINE_TYPES } from './Medicines';
 
 interface Props {
@@ -33,6 +34,7 @@ export default function MedicineForm({ open, onClose, medicine, currency, onSave
     strip_price: medicine ? String(medicine.strip_price) : '0',
     cost: medicine ? String(medicine.cost) : '0',
     barcode: medicine?.barcode ?? '',
+    image_url: medicine?.image_url ?? '',
     expiry_date: medicine?.expiry_date ?? '',
     expiry_alert_days: medicine ? String(medicine.expiry_alert_days) : '30',
     is_active: medicine?.is_active ?? true,
@@ -93,6 +95,7 @@ export default function MedicineForm({ open, onClose, medicine, currency, onSave
         strip_price: Number(form.strip_price) || 0,
         cost: Number(form.cost) || 0,
         barcode: form.barcode.trim() || null,
+        image_url: form.image_url.trim() || null,
         expiry_date: form.expiry_date,
         expiry_alert_days: alertDays,
         is_active: form.is_active,
@@ -312,6 +315,13 @@ export default function MedicineForm({ open, onClose, medicine, currency, onSave
             />
           </div>
         </div>
+
+        <ImageDropzone
+          value={form.image_url || null}
+          onChange={(url) => update('image_url', url ?? '')}
+          label="Medicine photo"
+          accent="rose"
+        />
 
         {/* Expiry + alert */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

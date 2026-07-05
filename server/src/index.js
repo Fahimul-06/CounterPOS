@@ -72,6 +72,8 @@ const Product = mongoose.model('Product', schema({
   stock: { type: Number, default: 0 },
   sku: { type: String, default: null },
   image_url: { type: String, default: null },
+  expiry_date: { type: String, default: null },
+  expiry_alert_days: { type: Number, default: 30 },
   is_active: { type: Boolean, default: true },
 }));
 
@@ -93,6 +95,7 @@ const Medicine = mongoose.model('Medicine', schema({
   strip_price: { type: Number, default: 0 },
   cost: { type: Number, default: 0 },
   barcode: { type: String, default: null },
+  image_url: { type: String, default: null },
   expiry_date: String,
   expiry_alert_days: { type: Number, default: 30 },
   is_active: { type: Boolean, default: true },
