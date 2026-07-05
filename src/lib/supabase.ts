@@ -50,6 +50,8 @@ export interface Sale {
   total: number;
   payment_method: string;
   status: string;
+  table_number?: string | null;
+  order_type?: string | null;
   customer_name: string | null;
   note: string | null;
   service_area: string | null;
@@ -95,34 +97,6 @@ export interface Medicine {
   expiry_date: string;
   expiry_alert_days: number;
   is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-
-export interface RestaurantTable {
-  id: string;
-  business_id: string;
-  name: string;
-  capacity: number;
-  section: string | null;
-  status: 'available' | 'occupied' | 'reserved' | 'cleaning';
-  current_order: string | null;
-  notes: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface KitchenOrder {
-  id: string;
-  business_id: string;
-  order_number: string;
-  table_name: string | null;
-  customer_name: string | null;
-  items: string;
-  priority: 'normal' | 'urgent';
-  status: 'pending' | 'preparing' | 'ready' | 'served' | 'cancelled';
-  note: string | null;
   created_at: string;
   updated_at: string;
 }

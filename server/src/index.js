@@ -119,28 +119,6 @@ const Dress = mongoose.model('Dress', schema({
   is_active: { type: Boolean, default: true },
 }));
 
-
-const RestaurantTable = mongoose.model('RestaurantTable', schema({
-  business_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', index: true },
-  name: { type: String, required: true },
-  capacity: { type: Number, default: 4 },
-  section: { type: String, default: null },
-  status: { type: String, enum: ['available', 'occupied', 'reserved', 'cleaning'], default: 'available' },
-  current_order: { type: String, default: null },
-  notes: { type: String, default: null },
-}));
-
-const KitchenOrder = mongoose.model('KitchenOrder', schema({
-  business_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', index: true },
-  order_number: { type: String, required: true },
-  table_name: { type: String, default: null },
-  customer_name: { type: String, default: null },
-  items: { type: String, required: true },
-  priority: { type: String, enum: ['normal', 'urgent'], default: 'normal' },
-  status: { type: String, enum: ['pending', 'preparing', 'ready', 'served', 'cancelled'], default: 'pending' },
-  note: { type: String, default: null },
-}));
-
 const Sale = mongoose.model('Sale', schema({
   business_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', index: true },
   subtotal: { type: Number, default: 0 },
@@ -152,6 +130,8 @@ const Sale = mongoose.model('Sale', schema({
   total: { type: Number, default: 0 },
   payment_method: { type: String, default: 'cash' },
   status: { type: String, default: 'completed' },
+  table_number: { type: String, default: null },
+  order_type: { type: String, default: null },
   customer_name: { type: String, default: null },
   note: { type: String, default: null },
   service_area: { type: String, default: null },
@@ -169,7 +149,7 @@ const SaleItem = mongoose.model('SaleItem', schema({
   line_total: { type: Number, default: 0 },
 }, { timestamps: { createdAt: 'created_at', updatedAt: false } }));
 
-const models = { businesses: Business, products: Product, medicines: Medicine, dresses: Dress, restaurant_tables: RestaurantTable, kitchen_orders: KitchenOrder, sales: Sale, sale_items: SaleItem };
+const models = { businesses: Business, products: Product, medicines: Medicine, dresses: Dress, sales: Sale, sale_items: SaleItem };
 
 function sign(user) {
   return jwt.sign({ id: String(user._id), email: user.email }, JWT_SECRET, { expiresIn: '7d' });

@@ -22,6 +22,8 @@ import {
   ChevronDown,
   ChevronUp,
   Store,
+  ChefHat,
+  Send,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import type { Product, Sale, BusinessCategory, Medicine, Dress } from '../../lib/supabase';
@@ -105,6 +107,7 @@ export default function PosTerminal() {
   const [payment, setPayment] = useState<PaymentMethod>('cash');
   const [discount, setDiscount] = useState<string>('');
   const [customerName, setCustomerName] = useState('');
+  const [tableNumber, setTableNumber] = useState('');
   const [note, setNote] = useState('');
   const [serviceCharge, setServiceCharge] = useState<string>('');
   const [vatRate, setVatRate] = useState<string>('');
@@ -120,6 +123,7 @@ export default function PosTerminal() {
 
   const currency = business?.currency ?? 'BDT';
   const taxRate = Number(business?.tax_rate ?? 0);
+  const isRestaurant = business?.category === 'restaurant';
 
   // Pre-fill charge fields from business defaults when they become available
   useEffect(() => {
@@ -214,6 +218,7 @@ export default function PosTerminal() {
     setCart([]);
     setDiscount('');
     setCustomerName('');
+    setTableNumber('');
     setNote('');
     setError(null);
   }, []);
@@ -257,10 +262,14 @@ export default function PosTerminal() {
   const itemCount = cart.reduce((acc, l) => acc + l.quantity, 0);
   const hasExtraCharges = totals.serviceChargeAmount > 0 || totals.vatAmount > 0 || totals.delivery > 0 || taxRate > 0;
 
-  const completeSale = async () => {
+  const saveOrder = async (status: 'completed' | 'kitchen') => {
     if (!business) return;
     if (cart.length === 0) {
-      setError('Cart is empty. Add products to start a sale.');
+      setError('Cart is empty. Add products to start an order.');
+      return;
+    }
+    if (status === 'kitchen' && isRestaurant && !tableNumber.trim()) {
+      setError('Table number is required before sending the order to kitchen.');
       return;
     }
     setError(null);
@@ -278,7 +287,9 @@ export default function PosTerminal() {
           delivery_charge: totals.delivery,
           total: totals.total,
           payment_method: payment,
-          status: 'completed',
+          status,
+          order_type: status === 'kitchen' ? 'dine_in' : null,
+          table_number: isRestaurant ? tableNumber.trim() || null : null,
           customer_name: customerName.trim() || null,
           note: note.trim() || null,
           service_area: serviceArea.trim() || null,
@@ -301,7 +312,6 @@ export default function PosTerminal() {
       const { error: itemsError } = await supabase.from('sale_items').insert(items);
       if (itemsError) throw itemsError;
 
-      // Decrement stock in the correct table
       const table = tableForCategory(business?.category);
       const stockCol = table === 'medicines' ? 'pieces' : 'stock';
       await Promise.all(
@@ -313,20 +323,29 @@ export default function PosTerminal() {
         ),
       );
 
-      // Refresh local product stock
       setProducts((prev) => prev.map((p) => {
         const line = cart.find((l) => l.product.id === p.id);
         if (!line) return p;
         return { ...p, stock: Math.max(0, p.stock - line.quantity) };
       }));
 
-      setCompletedSale({ sale, items });
+      if (status === 'completed') setCompletedSale({ sale, items });
       clearCart();
+      if (status === 'kitchen') setScanFlash(`Order sent to kitchen${tableNumber.trim() ? ` · Table ${tableNumber.trim()}` : ''}`);
+      if (status === 'kitchen') setTimeout(() => setScanFlash(null), 2000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to complete sale.');
+      setError(err instanceof Error ? err.message : 'Failed to save order.');
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const completeSale = async () => {
+    await saveOrder('completed');
+  };
+
+  const sendToKitchen = async () => {
+    await saveOrder('kitchen');
   };
 
   if (loading) {
@@ -535,6 +554,20 @@ export default function PosTerminal() {
             />
           </div>
 
+          {isRestaurant && (
+            <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+              <label className="block text-xs font-bold text-amber-800 mb-1.5">Table number *</label>
+              <input
+                type="text"
+                value={tableNumber}
+                onChange={(e) => setTableNumber(e.target.value)}
+                placeholder="e.g. T-04, 12, VIP-1"
+                className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+              />
+              <p className="mt-1 text-[11px] text-amber-700">Required when sending food order to kitchen.</p>
+            </div>
+          )}
+
           {/* Collapsible charges & zones */}
           <button
             onClick={() => setShowCharges((s) => !s)}
@@ -615,6 +648,26 @@ export default function PosTerminal() {
             </div>
           </div>
 
+          {isRestaurant && (
+            <button
+              onClick={sendToKitchen}
+              disabled={submitting || cart.length === 0}
+              className="mb-2 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-3.5 text-sm font-bold text-white shadow-lg shadow-amber-600/10 hover:bg-amber-700 active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Sending…
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4" />
+                  Send order to kitchen
+                </>
+              )}
+            </button>
+          )}
+
           <button
             onClick={completeSale}
             disabled={submitting || cart.length === 0}
@@ -627,8 +680,8 @@ export default function PosTerminal() {
               </>
             ) : (
               <>
-                <Receipt className="h-4 w-4" />
-                Charge {formatMoney(totals.total, currency)}
+                {isRestaurant ? <ChefHat className="h-4 w-4" /> : <Receipt className="h-4 w-4" />}
+                {isRestaurant ? `Complete paid order ${formatMoney(totals.total, currency)}` : `Charge ${formatMoney(totals.total, currency)}`}
               </>
             )}
           </button>

@@ -25,20 +25,7 @@ import Barcode from '../barcode/Barcode';
 type SortKey = 'name' | 'price' | 'stock' | 'created_at';
 type SortDir = 'asc' | 'desc';
 
-const RESTAURANT_PRODUCT_CATEGORIES = [
-  'Beverage',
-  'Meal',
-  'Dessert',
-  'Appetizer',
-  'Fast Food',
-  'Snacks',
-  'Coffee & Tea',
-  'Breakfast',
-  'Lunch',
-  'Dinner',
-  'Combo',
-  'Add-ons',
-];
+const RESTAURANT_PRODUCT_CATEGORIES = ['Beverage', 'Meal', 'Dessert', 'Fast Food', 'Starter', 'Snack', 'Combo', 'Breakfast', 'Lunch', 'Dinner'];
 
 export default function Products() {
   const { business } = useAuth();
@@ -595,14 +582,9 @@ function ProductForm({
                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
               >
                 <option value="">Select category</option>
-                {RESTAURANT_PRODUCT_CATEGORIES.map((c) => (
+                {[...new Set([...RESTAURANT_PRODUCT_CATEGORIES, ...categories])].map((c) => (
                   <option key={c} value={c}>{c}</option>
                 ))}
-                {categories
-                  .filter((c) => !RESTAURANT_PRODUCT_CATEGORIES.includes(c))
-                  .map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
               </select>
             ) : (
               <>
