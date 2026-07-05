@@ -12,6 +12,7 @@ import Sales from './components/views/Sales';
 import Kitchen from './components/views/Kitchen';
 import Tables from './components/views/Tables';
 import Settings from './components/views/Settings';
+import Subscription from './components/views/Subscription';
 import { Spinner } from './components/ui/Shared';
 
 type AuthRoute = 'signup' | 'signin' | 'app';
@@ -60,6 +61,14 @@ function parseRoute(): AuthRoute {
   return 'app';
 }
 
+
+function isSubscriptionActive(business: any) {
+  const now = Date.now();
+  const paidEnd = business?.subscription_ends_at ? new Date(business.subscription_ends_at).getTime() : 0;
+  const trialEnd = business?.trial_ends_at ? new Date(business.trial_ends_at).getTime() : 0;
+  return paidEnd > now || trialEnd > now;
+}
+
 function AuthedApp() {
   const { user, business, loading } = useAuth();
   const [view, setView] = useState<View>('dashboard');
@@ -80,6 +89,10 @@ function AuthedApp() {
     return <ProfileMissing />;
   }
 
+  if (business && !isSubscriptionActive(business)) {
+    return <Subscription forcePayment />;
+  }
+
   return (
     <AppLayout current={view} onNavigate={setView}>
       {view === 'dashboard' && <Dashboard onNavigate={setView} />}
@@ -91,6 +104,7 @@ function AuthedApp() {
       {view === 'kitchen' && <Kitchen />}
       {view === 'sales' && <Sales />}
       {view === 'settings' && <Settings />}
+      {view === 'subscription' && <Subscription onBack={() => setView('dashboard')} />}
     </AppLayout>
   );
 }

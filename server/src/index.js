@@ -18,6 +18,7 @@ fs.mkdirSync(UPLOAD_ROOT, { recursive: true });
 const app = express();
 app.use(cors({ origin: process.env.CLIENT_URL?.split(',') || true, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(UPLOAD_ROOT));
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_me';
@@ -60,6 +61,12 @@ const Business = mongoose.model('Business', schema({
   tax_zone: { type: String, default: null },
   receipt_message: { type: String, default: null },
   logo_url: { type: String, default: null },
+  subscription_plan: { type: String, enum: ['trial', 'monthly', 'yearly'], default: 'trial' },
+  subscription_status: { type: String, enum: ['trialing', 'active', 'expired', 'cancelled'], default: 'trialing' },
+  trial_starts_at: { type: Date, default: Date.now },
+  trial_ends_at: { type: Date, default: () => new Date(Date.now() + 15 * 24 * 60 * 60 * 1000) },
+  subscription_ends_at: { type: Date, default: null },
+  subscription_last_payment_at: { type: Date, default: null },
 }));
 
 const Product = mongoose.model('Product', schema({
@@ -152,7 +159,20 @@ const SaleItem = mongoose.model('SaleItem', schema({
   line_total: { type: Number, default: 0 },
 }, { timestamps: { createdAt: 'created_at', updatedAt: false } }));
 
-const models = { businesses: Business, products: Product, medicines: Medicine, dresses: Dress, sales: Sale, sale_items: SaleItem };
+const PaymentTransaction = mongoose.model('PaymentTransaction', schema({
+  business_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', index: true },
+  tran_id: { type: String, required: true, unique: true, index: true },
+  val_id: { type: String, default: null },
+  plan: { type: String, enum: ['monthly', 'yearly'], required: true },
+  amount: { type: Number, required: true },
+  currency: { type: String, default: 'BDT' },
+  status: { type: String, enum: ['pending', 'paid', 'failed', 'cancelled'], default: 'pending' },
+  gateway_response: { type: mongoose.Schema.Types.Mixed, default: null },
+  paid_at: { type: Date, default: null },
+  created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+}));
+
+const models = { businesses: Business, products: Product, medicines: Medicine, dresses: Dress, sales: Sale, sale_items: SaleItem, payment_transactions: PaymentTransaction };
 
 function sign(user) {
   return jwt.sign({ id: String(user._id), email: user.email }, JWT_SECRET, { expiresIn: '7d' });
@@ -168,6 +188,85 @@ function auth(req, res, next) {
   } catch {
     res.status(401).json({ message: 'Invalid or expired token' });
   }
+}
+
+function getPlanConfig(plan) {
+  const prices = {
+    monthly: Number(process.env.SUBSCRIPTION_MONTHLY_PRICE || 999),
+    yearly: Number(process.env.SUBSCRIPTION_YEARLY_PRICE || 9999),
+  };
+  const days = { monthly: 30, yearly: 365 };
+  if (!prices[plan]) return null;
+  return { amount: prices[plan], days: days[plan] };
+}
+
+function businessSubscriptionInfo(business) {
+  const now = new Date();
+  const trialEnds = business?.trial_ends_at ? new Date(business.trial_ends_at) : null;
+  const subscriptionEnds = business?.subscription_ends_at ? new Date(business.subscription_ends_at) : null;
+  const paidActive = subscriptionEnds && subscriptionEnds.getTime() > now.getTime();
+  const trialActive = !paidActive && trialEnds && trialEnds.getTime() > now.getTime();
+  const active = Boolean(paidActive || trialActive);
+  const status = paidActive ? 'active' : trialActive ? 'trialing' : 'expired';
+  const endsAt = paidActive ? subscriptionEnds : trialEnds;
+  const daysRemaining = endsAt ? Math.max(0, Math.ceil((endsAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000))) : 0;
+  return {
+    active,
+    status,
+    plan: paidActive ? business.subscription_plan : 'trial',
+    trial_ends_at: trialEnds,
+    subscription_ends_at: subscriptionEnds,
+    days_remaining: daysRemaining,
+  };
+}
+
+function apiBaseUrl(req) {
+  return (process.env.API_PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+}
+
+function clientBaseUrl() {
+  return (process.env.CLIENT_URL || 'http://localhost:5173').split(',')[0].replace(/\/$/, '');
+}
+
+function sslEndpoint(path) {
+  const live = String(process.env.SSLCOMMERZ_IS_LIVE || '').toLowerCase() === 'true';
+  const base = live ? 'https://securepay.sslcommerz.com' : 'https://sandbox.sslcommerz.com';
+  return `${base}${path}`;
+}
+
+async function validateSslCommerzPayment(valId) {
+  if (!valId) return null;
+  const url = new URL(sslEndpoint('/validator/api/validationserverAPI.php'));
+  url.searchParams.set('val_id', valId);
+  url.searchParams.set('store_id', process.env.SSLCOMMERZ_STORE_ID || '');
+  url.searchParams.set('store_passwd', process.env.SSLCOMMERZ_STORE_PASSWORD || '');
+  url.searchParams.set('format', 'json');
+  const response = await fetch(url);
+  return response.json();
+}
+
+async function activateSubscription(transaction, gatewayResponse = {}) {
+  if (!transaction || transaction.status === 'paid') return null;
+  const config = getPlanConfig(transaction.plan);
+  if (!config) throw new Error('Invalid subscription plan.');
+  const now = new Date();
+  const current = await Business.findById(transaction.business_id);
+  const currentEnd = current?.subscription_ends_at && new Date(current.subscription_ends_at) > now
+    ? new Date(current.subscription_ends_at)
+    : now;
+  const newEnd = new Date(currentEnd.getTime() + config.days * 24 * 60 * 60 * 1000);
+  await Business.findByIdAndUpdate(transaction.business_id, {
+    subscription_plan: transaction.plan,
+    subscription_status: 'active',
+    subscription_ends_at: newEnd,
+    subscription_last_payment_at: now,
+  });
+  transaction.status = 'paid';
+  transaction.paid_at = now;
+  transaction.gateway_response = gatewayResponse;
+  if (gatewayResponse?.val_id) transaction.val_id = gatewayResponse.val_id;
+  await transaction.save();
+  return newEnd;
 }
 
 function clean(doc) {
@@ -194,7 +293,21 @@ app.post('/api/auth/register', async (req, res, next) => {
     if (!email || !password) return res.status(400).json({ message: 'Email and password are required.' });
     if (await User.findOne({ email: email.toLowerCase() })) return res.status(409).json({ message: 'Email is already registered.' });
     const user = await User.create({ email, password_hash: await bcrypt.hash(password, 10) });
-    await Business.create({ _id: user._id, owner_name, phone, business_name, category, address, currency: 'BDT' });
+    const trialStart = new Date();
+    const trialEnd = new Date(trialStart.getTime() + 15 * 24 * 60 * 60 * 1000);
+    await Business.create({
+      _id: user._id,
+      owner_name,
+      phone,
+      business_name,
+      category,
+      address,
+      currency: 'BDT',
+      subscription_plan: 'trial',
+      subscription_status: 'trialing',
+      trial_starts_at: trialStart,
+      trial_ends_at: trialEnd,
+    });
     res.status(201).json({ token: sign(user), user: { id: String(user._id), email: user.email } });
   } catch (err) { next(err); }
 });
@@ -210,6 +323,132 @@ app.post('/api/auth/login', async (req, res, next) => {
 
 app.get('/api/auth/me', auth, async (req, res) => {
   res.json({ user: { id: req.user.id, email: req.user.email } });
+});
+
+app.get('/api/subscription', auth, async (req, res, next) => {
+  try {
+    const business = await Business.findById(req.user.id);
+    if (!business) return res.status(404).json({ message: 'Business profile not found.' });
+    const transactions = await PaymentTransaction.find({ business_id: req.user.id }).sort({ created_at: -1 }).limit(10);
+    res.json({ data: { business: clean(business), subscription: businessSubscriptionInfo(business), transactions: transactions.map(clean) } });
+  } catch (err) { next(err); }
+});
+
+app.post('/api/subscription/checkout', auth, async (req, res, next) => {
+  try {
+    const plan = String(req.body.plan || '').toLowerCase();
+    const config = getPlanConfig(plan);
+    if (!config) return res.status(400).json({ message: 'Select monthly or yearly plan.' });
+    if (!process.env.SSLCOMMERZ_STORE_ID || !process.env.SSLCOMMERZ_STORE_PASSWORD) {
+      return res.status(400).json({ message: 'SSLCommerz is not configured. Add SSLCOMMERZ_STORE_ID and SSLCOMMERZ_STORE_PASSWORD in backend environment variables.' });
+    }
+    const business = await Business.findById(req.user.id);
+    if (!business) return res.status(404).json({ message: 'Business profile not found.' });
+    const tranId = `SUB-${req.user.id}-${Date.now()}`;
+    const transaction = await PaymentTransaction.create({
+      business_id: req.user.id,
+      tran_id: tranId,
+      plan,
+      amount: config.amount,
+      currency: 'BDT',
+      status: 'pending',
+      created_by: req.user.id,
+    });
+    const base = apiBaseUrl(req);
+    const payload = {
+      store_id: process.env.SSLCOMMERZ_STORE_ID,
+      store_passwd: process.env.SSLCOMMERZ_STORE_PASSWORD,
+      total_amount: String(config.amount),
+      currency: 'BDT',
+      tran_id: tranId,
+      success_url: `${base}/api/subscription/success`,
+      fail_url: `${base}/api/subscription/fail`,
+      cancel_url: `${base}/api/subscription/cancel`,
+      ipn_url: `${base}/api/subscription/ipn`,
+      product_name: `CounterPOS ${plan} subscription`,
+      product_category: 'Software Subscription',
+      product_profile: 'non-physical-goods',
+      cus_name: business.owner_name || business.business_name || 'CounterPOS Customer',
+      cus_email: req.user.email,
+      cus_add1: business.address || 'Bangladesh',
+      cus_city: 'Dhaka',
+      cus_country: 'Bangladesh',
+      cus_phone: business.phone || '01700000000',
+      shipping_method: 'NO',
+      num_of_item: '1',
+      value_a: String(transaction._id),
+      value_b: plan,
+    };
+    const response = await fetch(sslEndpoint('/gwprocess/v4/api.php'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(payload),
+    });
+    const gateway = await response.json();
+    transaction.gateway_response = gateway;
+    await transaction.save();
+    if (!gateway.GatewayPageURL) {
+      return res.status(502).json({ message: gateway.failedreason || 'SSLCommerz did not return a checkout URL.', gateway });
+    }
+    res.json({ data: { checkout_url: gateway.GatewayPageURL, tran_id: tranId } });
+  } catch (err) { next(err); }
+});
+
+async function handlePaymentReturn(req, res, returnStatus) {
+  const tranId = req.body.tran_id || req.query.tran_id;
+  const valId = req.body.val_id || req.query.val_id;
+  const transaction = await PaymentTransaction.findOne({ tran_id: tranId });
+  if (!transaction) return res.redirect(`${clientBaseUrl()}/?subscription=not_found`);
+  if (returnStatus === 'success') {
+    let validation = null;
+    try { validation = await validateSslCommerzPayment(valId); } catch (err) { validation = { validation_error: err.message }; }
+    const validStatuses = ['VALID', 'VALIDATED'];
+    const amountOk = !validation?.amount || Number(validation.amount) === Number(transaction.amount);
+    if (validStatuses.includes(String(validation?.status || '').toUpperCase()) && amountOk) {
+      await activateSubscription(transaction, { ...req.body, validation });
+      return res.redirect(`${clientBaseUrl()}/?subscription=success`);
+    }
+    transaction.gateway_response = { ...req.body, validation };
+    await transaction.save();
+    return res.redirect(`${clientBaseUrl()}/?subscription=validation_failed`);
+  }
+  transaction.status = returnStatus === 'cancel' ? 'cancelled' : 'failed';
+  transaction.gateway_response = req.body;
+  await transaction.save();
+  return res.redirect(`${clientBaseUrl()}/?subscription=${returnStatus}`);
+}
+
+app.post('/api/subscription/success', async (req, res, next) => {
+  try { await handlePaymentReturn(req, res, 'success'); } catch (err) { next(err); }
+});
+app.get('/api/subscription/success', async (req, res, next) => {
+  try { await handlePaymentReturn(req, res, 'success'); } catch (err) { next(err); }
+});
+app.post('/api/subscription/fail', async (req, res, next) => {
+  try { await handlePaymentReturn(req, res, 'fail'); } catch (err) { next(err); }
+});
+app.get('/api/subscription/fail', async (req, res, next) => {
+  try { await handlePaymentReturn(req, res, 'fail'); } catch (err) { next(err); }
+});
+app.post('/api/subscription/cancel', async (req, res, next) => {
+  try { await handlePaymentReturn(req, res, 'cancel'); } catch (err) { next(err); }
+});
+app.get('/api/subscription/cancel', async (req, res, next) => {
+  try { await handlePaymentReturn(req, res, 'cancel'); } catch (err) { next(err); }
+});
+app.post('/api/subscription/ipn', async (req, res, next) => {
+  try {
+    const transaction = await PaymentTransaction.findOne({ tran_id: req.body.tran_id });
+    if (!transaction) return res.status(404).json({ message: 'Transaction not found.' });
+    if (String(req.body.status || '').toUpperCase() === 'VALID') {
+      const validation = await validateSslCommerzPayment(req.body.val_id);
+      const amountOk = !validation?.amount || Number(validation.amount) === Number(transaction.amount);
+      if (['VALID', 'VALIDATED'].includes(String(validation?.status || '').toUpperCase()) && amountOk) {
+        await activateSubscription(transaction, { ...req.body, validation });
+      }
+    }
+    res.json({ ok: true });
+  } catch (err) { next(err); }
 });
 
 app.get('/api/data/:table', auth, async (req, res, next) => {

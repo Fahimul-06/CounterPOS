@@ -14,12 +14,13 @@ import {
   Shirt,
   ChefHat,
   Table2,
+  CreditCard,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { CATEGORY_META, classNames } from '../../lib/utils';
 import type { BusinessCategory } from '../../lib/supabase';
 
-export type View = 'dashboard' | 'pos' | 'tables' | 'products' | 'medicines' | 'dresses' | 'kitchen' | 'sales' | 'settings';
+export type View = 'dashboard' | 'pos' | 'tables' | 'products' | 'medicines' | 'dresses' | 'kitchen' | 'sales' | 'settings' | 'subscription';
 
 interface NavItem {
   id: View;
@@ -34,6 +35,7 @@ const BASE_NAV: NavItem[] = [
   { id: 'products', label: 'Products', icon: Package, description: 'Manage inventory' },
   { id: 'sales', label: 'Sales', icon: Receipt, description: 'History & receipts' },
   { id: 'settings', label: 'Settings', icon: Settings, description: 'Business profile' },
+  { id: 'subscription', label: 'Subscription', icon: CreditCard, description: 'Trial, monthly & yearly plan' },
 ];
 
 const MEDICINES_NAV: NavItem = {

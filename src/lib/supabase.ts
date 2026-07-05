@@ -19,6 +19,12 @@ export interface Business {
   tax_zone: string | null;
   receipt_message: string | null;
   logo_url: string | null;
+  subscription_plan?: 'trial' | 'monthly' | 'yearly';
+  subscription_status?: 'trialing' | 'active' | 'expired' | 'cancelled';
+  trial_starts_at?: string | null;
+  trial_ends_at?: string | null;
+  subscription_ends_at?: string | null;
+  subscription_last_payment_at?: string | null;
   created_at: string;
 }
 
@@ -154,7 +160,7 @@ function setAuth(token: string | null, user: User | null) {
   }
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers || {});
   const token = getToken();
   if (token) headers.set('Authorization', `Bearer ${token}`);
@@ -206,10 +212,10 @@ class QueryBuilder<T = any> implements PromiseLike<ApiResult<T>> {
       if (this.singleMode) params.set('single', 'true');
       const qs = params.toString() ? `?${params.toString()}` : '';
       let data: any;
-      if (this.method === 'select') data = await request(`/data/${this.table}${qs}`);
-      if (this.method === 'insert') data = await request(`/data/${this.table}${qs}`, { method: 'POST', body: JSON.stringify(this.body) });
-      if (this.method === 'update') data = await request(`/data/${this.table}${qs}`, { method: 'PATCH', body: JSON.stringify(this.body) });
-      if (this.method === 'delete') data = await request(`/data/${this.table}${qs}`, { method: 'DELETE' });
+      if (this.method === 'select') data = await apiRequest(`/data/${this.table}${qs}`);
+      if (this.method === 'insert') data = await apiRequest(`/data/${this.table}${qs}`, { method: 'POST', body: JSON.stringify(this.body) });
+      if (this.method === 'update') data = await apiRequest(`/data/${this.table}${qs}`, { method: 'PATCH', body: JSON.stringify(this.body) });
+      if (this.method === 'delete') data = await apiRequest(`/data/${this.table}${qs}`, { method: 'DELETE' });
       return { data: data?.data ?? data ?? null, error: null };
     } catch (err) {
       return { data: null, error: err instanceof Error ? err : new Error('Request failed') };
@@ -230,7 +236,7 @@ export const supabase = {
       const token = getToken();
       if (!token) return { data: { session: null } };
       try {
-        const res = await request<{ user: User }>('/auth/me');
+        const res = await apiRequest<{ user: User }>('/auth/me');
         const session = { access_token: token, user: res.user };
         localStorage.setItem('counterpos_user', JSON.stringify(res.user));
         return { data: { session } };
@@ -241,7 +247,7 @@ export const supabase = {
     },
     async signInWithPassword({ email, password }: { email: string; password: string }) {
       try {
-        const res = await request<{ token: string; user: User }>('/auth/login', {
+        const res = await apiRequest<{ token: string; user: User }>('/auth/login', {
           method: 'POST',
           body: JSON.stringify({ email, password }),
         });
@@ -255,7 +261,7 @@ export const supabase = {
     },
     async signUp({ email, password, options }: { email: string; password: string; options?: { data?: Record<string, any> } }) {
       try {
-        const res = await request<{ token: string; user: User }>('/auth/register', {
+        const res = await apiRequest<{ token: string; user: User }>('/auth/register', {
           method: 'POST',
           body: JSON.stringify({ email, password, ...options?.data }),
         });
@@ -277,6 +283,27 @@ export const supabase = {
       return { error: null };
     },
   },
+  subscription: {
+    async getStatus() {
+      try {
+        const res = await apiRequest<{ data: any }>('/subscription');
+        return { data: res.data, error: null };
+      } catch (err) {
+        return { data: null, error: err instanceof Error ? err : new Error('Failed to load subscription') };
+      }
+    },
+    async checkout(plan: 'monthly' | 'yearly') {
+      try {
+        const res = await apiRequest<{ data: { checkout_url: string; tran_id: string } }>('/subscription/checkout', {
+          method: 'POST',
+          body: JSON.stringify({ plan }),
+        });
+        return { data: res.data, error: null };
+      } catch (err) {
+        return { data: null, error: err instanceof Error ? err : new Error('Failed to start checkout') };
+      }
+    },
+  },
   from(table: string) {
     return new QueryBuilder(table);
   },
@@ -288,7 +315,7 @@ export const supabase = {
             const form = new FormData();
             form.append('file', file);
             form.append('path', path);
-            await request('/uploads', { method: 'POST', body: form });
+            await apiRequest('/uploads', { method: 'POST', body: form });
             return { data: { path }, error: null };
           } catch (err) {
             return { data: null, error: err instanceof Error ? err : new Error('Upload failed') };
