@@ -21,6 +21,7 @@ import { useAuth } from '../../context/AuthContext';
 import { formatMoney, classNames } from '../../lib/utils';
 import { PageContainer, PageHeader, Card, Button, Spinner, EmptyState, Modal, ConfirmDialog, Badge } from '../ui/Shared';
 import Barcode from '../barcode/Barcode';
+import ImageDropzone from '../ui/ImageDropzone';
 
 type SortKey = 'name' | 'price' | 'stock' | 'created_at';
 type SortDir = 'asc' | 'desc';
@@ -668,16 +669,12 @@ function ProductForm({
           </div>
         </div>
 
-        <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-1.5">Image URL</label>
-          <input
-            type="url"
-            value={form.image_url}
-            onChange={(e) => update('image_url', e.target.value)}
-            placeholder="https://…"
-            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
-          />
-        </div>
+        <ImageDropzone
+          value={form.image_url || null}
+          onChange={(url) => update('image_url', url ?? '')}
+          label="Product photo"
+          accent="fuchsia"
+        />
 
         <label className="flex items-center gap-2.5 cursor-pointer">
           <input

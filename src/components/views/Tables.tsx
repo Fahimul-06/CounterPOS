@@ -1,266 +1,415 @@
-import { useEffect, useMemo, useState, FormEvent } from 'react';
-import { Plus, Table2, Pencil, Trash2, Loader2, AlertCircle } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  Banknote,
+  CheckCircle2,
+  ChefHat,
+  Clock3,
+  CreditCard,
+  Loader2,
+  Printer,
+  Receipt,
+  RefreshCw,
+  Store,
+  Table2,
+  Wallet,
+} from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import type { RestaurantTable } from '../../lib/supabase';
+import type { BusinessCategory, Sale, SaleWithItems } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { PageContainer, PageHeader, Card, Button, Spinner, EmptyState, Modal, ConfirmDialog, Badge } from '../ui/Shared';
+import { CATEGORY_META, classNames, formatMoney } from '../../lib/utils';
+import { Badge, Button, Card, EmptyState, Modal, PageContainer, PageHeader, Spinner } from '../ui/Shared';
 
-type TableStatus = RestaurantTable['status'];
+type PaymentMethod = 'cash' | 'card' | 'other';
+type ActiveStatus = 'kitchen' | 'prepared';
 
-const STATUS_OPTIONS: TableStatus[] = ['available', 'occupied', 'reserved', 'cleaning'];
+const TABLE_NUMBERS = Array.from({ length: 20 }, (_, i) => String(i + 1));
 
 export default function Tables() {
   const { business } = useAuth();
-  const [tables, setTables] = useState<RestaurantTable[]>([]);
+  const [orders, setOrders] = useState<SaleWithItems[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState<RestaurantTable | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<RestaurantTable | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<SaleWithItems | null>(null);
+  const [payment, setPayment] = useState<PaymentMethod>('cash');
+  const [updating, setUpdating] = useState(false);
+  const [receiptSale, setReceiptSale] = useState<SaleWithItems | null>(null);
+
+  const currency = business?.currency ?? 'BDT';
+  const taxRate = Number(business?.tax_rate ?? 0);
 
   const load = async () => {
     if (!business) return;
     setLoading(true);
+    setError(null);
     const { data, error } = await supabase
-      .from('restaurant_tables')
-      .select('*')
+      .from('sales')
+      .select('*, sale_items(*)')
       .eq('business_id', business.id)
-      .order('name', { ascending: true });
-    if (!error) setTables(data as RestaurantTable[]);
-    else console.error(error);
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      setOrders([]);
+      setError(error.message);
+    } else {
+      const active = ((data ?? []) as SaleWithItems[]).filter((order) =>
+        ['kitchen', 'prepared'].includes(String(order.status)) && !!order.table_number,
+      );
+      setOrders(active);
+    }
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [business]);
+  useEffect(() => {
+    load();
+  }, [business]);
+
+  const ordersByTable = useMemo(() => {
+    const map = new Map<string, SaleWithItems>();
+    orders.forEach((order) => {
+      const table = String(order.table_number || '').trim();
+      if (!table) return;
+      if (!map.has(table)) map.set(table, order);
+    });
+    return map;
+  }, [orders]);
 
   const stats = useMemo(() => ({
-    total: tables.length,
-    available: tables.filter((t) => t.status === 'available').length,
-    occupied: tables.filter((t) => t.status === 'occupied').length,
-    reserved: tables.filter((t) => t.status === 'reserved').length,
-  }), [tables]);
+    booked: orders.length,
+    processing: orders.filter((o) => o.status === 'kitchen').length,
+    prepared: orders.filter((o) => o.status === 'prepared').length,
+    amount: orders.reduce((sum, o) => sum + Number(o.total || 0), 0),
+  }), [orders]);
 
-  const openNew = () => { setEditing(null); setShowForm(true); };
-
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    setDeleting(true);
-    const { error } = await supabase.from('restaurant_tables').delete().eq('id', deleteTarget.id);
-    setDeleting(false);
-    if (error) {
-      console.error(error);
-      return;
-    }
-    setTables((prev) => prev.filter((t) => t.id !== deleteTarget.id));
-    setDeleteTarget(null);
+  const openOrder = (order: SaleWithItems) => {
+    setSelected(order);
+    setReceiptSale(null);
+    setPayment((order.payment_method as PaymentMethod) || 'cash');
   };
 
-  const quickStatus = async (table: RestaurantTable, status: TableStatus) => {
-    const { data, error } = await supabase
-      .from('restaurant_tables')
-      .update({ status, updated_at: new Date().toISOString() })
-      .eq('id', table.id)
-      .select()
-      .single();
+  const markPrepared = async () => {
+    if (!selected) return;
+    setUpdating(true);
+    setError(null);
+    const { error } = await supabase
+      .from('sales')
+      .update({ status: 'prepared', updated_at: new Date().toISOString() })
+      .eq('id', selected.id);
+    setUpdating(false);
     if (error) {
-      console.error(error);
+      setError(error.message);
       return;
     }
-    setTables((prev) => prev.map((t) => (t.id === table.id ? data as RestaurantTable : t)));
+    const updated = { ...selected, status: 'prepared' as ActiveStatus };
+    setSelected(updated);
+    setOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
   };
+
+  const completeOrder = async () => {
+    if (!selected) return;
+    setUpdating(true);
+    setError(null);
+    const { error } = await supabase
+      .from('sales')
+      .update({ status: 'completed', payment_method: payment, updated_at: new Date().toISOString() })
+      .eq('id', selected.id);
+    setUpdating(false);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    const completed = { ...selected, status: 'completed', payment_method: payment } as SaleWithItems;
+    setReceiptSale(completed);
+    setOrders((prev) => prev.filter((o) => o.id !== selected.id));
+  };
+
+  if (business?.category !== 'restaurant') {
+    return (
+      <PageContainer>
+        <EmptyState icon={Table2} title="Tables are for restaurant accounts" description="Create or switch to a restaurant business profile to use table booking and kitchen orders." />
+      </PageContainer>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="h-[calc(100vh-4rem)] flex items-center justify-center">
+        <Spinner label="Loading tables…" />
+      </div>
+    );
+  }
 
   return (
     <PageContainer>
       <PageHeader
-        title="Tables"
-        subtitle="Create and manage restaurant tables, capacity, sections, and live table status."
-        action={<Button onClick={openNew}><Plus className="h-4 w-4" /> Add table</Button>}
+        title="Restaurant tables"
+        subtitle="Click a booked table to see order details, kitchen status, payment method, receipt, and print option."
+        action={
+          <Button variant="secondary" onClick={load}>
+            <RefreshCw className="h-4 w-4" />
+            Refresh
+          </Button>
+        }
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
-        <Stat label="Total tables" value={stats.total} />
-        <Stat label="Available" value={stats.available} color="green" />
-        <Stat label="Occupied" value={stats.occupied} color="red" />
-        <Stat label="Reserved" value={stats.reserved} color="amber" />
+      {error && <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
+
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-5">
+        <TableStat label="Booked tables" value={String(stats.booked)} icon={Table2} />
+        <TableStat label="Processing" value={String(stats.processing)} icon={ChefHat} />
+        <TableStat label="Prepared" value={String(stats.prepared)} icon={CheckCircle2} />
+        <TableStat label="Open amount" value={formatMoney(stats.amount, currency)} icon={Receipt} />
       </div>
 
-      <Card className="overflow-hidden">
-        {loading ? <Spinner label="Loading tables…" /> : tables.length === 0 ? (
-          <EmptyState
-            icon={Table2}
-            title="No tables yet"
-            description="Add your dining tables so staff can track occupied, reserved, cleaning, and available seats."
-            action={<Button onClick={openNew}><Plus className="h-4 w-4" /> Add table</Button>}
-          />
-        ) : (
-          <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4 p-4">
-            {tables.map((table) => (
-              <div key={table.id} className="rounded-2xl border border-slate-200 bg-white p-4 hover:shadow-sm transition-shadow">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-slate-900">{table.name}</h3>
-                      <StatusBadge status={table.status} />
-                    </div>
-                    <p className="mt-1 text-sm text-slate-500">
-                      {table.capacity} seats{table.section ? ` • ${table.section}` : ''}
-                    </p>
-                    {table.current_order && <p className="mt-2 text-xs text-slate-500">Current order: {table.current_order}</p>}
-                    {table.notes && <p className="mt-2 text-xs text-slate-500 line-clamp-2">{table.notes}</p>}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button onClick={() => { setEditing(table); setShowForm(true); }} className="p-1.5 rounded-md text-slate-500 hover:text-brand-600 hover:bg-brand-50" title="Edit">
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button onClick={() => setDeleteTarget(table)} className="p-1.5 rounded-md text-slate-500 hover:text-rose-600 hover:bg-rose-50" title="Delete">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-                <div className="mt-4 grid grid-cols-2 gap-2">
-                  {STATUS_OPTIONS.map((status) => (
-                    <Button key={status} variant={table.status === status ? 'primary' : 'secondary'} size="sm" onClick={() => quickStatus(table, status)}>
-                      {labelStatus(status)}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            ))}
+      <Card className="p-4 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <h2 className="font-extrabold text-slate-900">Table map</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Green = available, amber = processing, blue = prepared.</p>
           </div>
-        )}
+          <div className="flex flex-wrap gap-2 text-xs font-semibold">
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 px-2.5 py-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Available</span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 text-amber-700 px-2.5 py-1"><span className="h-2 w-2 rounded-full bg-amber-500" /> Processing</span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 text-blue-700 px-2.5 py-1"><span className="h-2 w-2 rounded-full bg-blue-500" /> Prepared</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 xl:grid-cols-10 gap-3">
+          {TABLE_NUMBERS.map((table) => {
+            const order = ordersByTable.get(table);
+            const status = order?.status as ActiveStatus | undefined;
+            return (
+              <button
+                key={table}
+                onClick={() => order && openOrder(order)}
+                className={classNames(
+                  'min-h-[105px] rounded-2xl border-2 p-3 text-left transition-all',
+                  order
+                    ? status === 'prepared'
+                      ? 'border-blue-200 bg-blue-50 hover:bg-blue-100 hover:shadow-soft-lg'
+                      : 'border-amber-200 bg-amber-50 hover:bg-amber-100 hover:shadow-soft-lg'
+                    : 'border-emerald-200 bg-emerald-50 hover:bg-emerald-100',
+                )}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="h-9 w-9 rounded-xl bg-white/80 grid place-items-center shadow-sm">
+                    <Table2 className={classNames('h-5 w-5', order ? status === 'prepared' ? 'text-blue-700' : 'text-amber-700' : 'text-emerald-700')} />
+                  </div>
+                  {order ? <Badge color={status === 'prepared' ? 'blue' : 'amber'}>{status === 'prepared' ? 'Prepared' : 'Booked'}</Badge> : <Badge color="green">Free</Badge>}
+                </div>
+                <p className="mt-3 text-lg font-extrabold text-slate-900">Table {table}</p>
+                {order ? (
+                  <div className="mt-1 text-xs text-slate-600 space-y-0.5">
+                    <p>{(order.sale_items ?? []).reduce((s, it) => s + Number(it.quantity), 0)} items</p>
+                    <p className="font-bold text-slate-900">{formatMoney(Number(order.total), currency)}</p>
+                  </div>
+                ) : (
+                  <p className="mt-1 text-xs text-emerald-700 font-semibold">Available</p>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </Card>
 
-      {showForm && (
-        <TableForm
-          open={showForm}
-          table={editing}
-          onClose={() => setShowForm(false)}
-          onSaved={(saved, isNew) => {
-            setTables((prev) => isNew ? [...prev, saved].sort((a, b) => a.name.localeCompare(b.name)) : prev.map((t) => t.id === saved.id ? saved : t));
-            setShowForm(false);
-          }}
-        />
-      )}
-
-      <ConfirmDialog
-        open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={handleDelete}
-        title="Delete table"
-        message={`Delete ${deleteTarget?.name}? This cannot be undone.`}
-        confirmLabel="Delete"
-        danger
-        busy={deleting}
+      <OrderModal
+        open={!!selected}
+        onClose={() => setSelected(null)}
+        order={selected}
+        receiptSale={receiptSale}
+        business={business}
+        currency={currency}
+        taxRate={taxRate}
+        payment={payment}
+        setPayment={setPayment}
+        onPrepared={markPrepared}
+        onComplete={completeOrder}
+        updating={updating}
       />
     </PageContainer>
   );
 }
 
-function TableForm({ open, table, onClose, onSaved }: { open: boolean; table: RestaurantTable | null; onClose: () => void; onSaved: (table: RestaurantTable, isNew: boolean) => void }) {
-  const { business } = useAuth();
-  const [form, setForm] = useState({
-    name: table?.name ?? '',
-    capacity: table ? String(table.capacity) : '4',
-    section: table?.section ?? '',
-    status: table?.status ?? 'available' as TableStatus,
-    current_order: table?.current_order ?? '',
-    notes: table?.notes ?? '',
-  });
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+function TableStat({ label, value, icon: Icon }: { label: string; value: string; icon: typeof Table2 }) {
+  return (
+    <Card className="p-4">
+      <div className="flex items-center gap-3">
+        <div className="h-10 w-10 rounded-xl bg-slate-100 grid place-items-center">
+          <Icon className="h-5 w-5 text-slate-600" />
+        </div>
+        <div>
+          <p className="text-xs font-semibold text-slate-500">{label}</p>
+          <p className="text-xl font-extrabold text-slate-900">{value}</p>
+        </div>
+      </div>
+    </Card>
+  );
+}
 
-  const update = (key: keyof typeof form, value: string | TableStatus) => setForm((f) => ({ ...f, [key]: value }));
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!business) return;
-    setError(null);
-    if (!form.name.trim()) {
-      setError('Table name is required.');
-      return;
-    }
-    setSaving(true);
-    try {
-      const payload = {
-        business_id: business.id,
-        name: form.name.trim(),
-        capacity: Number(form.capacity) || 0,
-        section: form.section.trim() || null,
-        status: form.status,
-        current_order: form.current_order.trim() || null,
-        notes: form.notes.trim() || null,
-        updated_at: new Date().toISOString(),
-      };
-      if (table) {
-        const { data, error } = await supabase.from('restaurant_tables').update(payload).eq('id', table.id).select().single();
-        if (error) throw error;
-        onSaved(data as RestaurantTable, false);
-      } else {
-        const { data, error } = await supabase.from('restaurant_tables').insert(payload).select().single();
-        if (error) throw error;
-        onSaved(data as RestaurantTable, true);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save table.');
-    } finally {
-      setSaving(false);
-    }
-  };
+function OrderModal({
+  open,
+  onClose,
+  order,
+  receiptSale,
+  business,
+  currency,
+  taxRate,
+  payment,
+  setPayment,
+  onPrepared,
+  onComplete,
+  updating,
+}: {
+  open: boolean;
+  onClose: () => void;
+  order: SaleWithItems | null;
+  receiptSale: SaleWithItems | null;
+  business: { business_name: string; address: string; owner_name: string; category: string; phone?: string; receipt_message?: string | null; logo_url?: string | null } | null;
+  currency: string;
+  taxRate: number;
+  payment: PaymentMethod;
+  setPayment: (method: PaymentMethod) => void;
+  onPrepared: () => void;
+  onComplete: () => void;
+  updating: boolean;
+}) {
+  if (!order || !business) return null;
+  const printable = receiptSale ?? order;
+  const status = String(order.status);
 
   return (
-    <Modal open={open} onClose={onClose} title={table ? 'Edit table' : 'Add table'} size="lg">
-      <form onSubmit={submit} className="p-5 space-y-4">
-        <div className="grid sm:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Table name *</label>
-            <input value={form.name} onChange={(e) => update('name', e.target.value)} placeholder="e.g. Table 01" className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100" autoFocus />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Capacity</label>
-            <input type="number" min="1" value={form.capacity} onChange={(e) => update('capacity', e.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100" />
-          </div>
-        </div>
-        <div className="grid sm:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Section / floor</label>
-            <input value={form.section} onChange={(e) => update('section', e.target.value)} placeholder="Ground floor, Rooftop, VIP" className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100" />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Status</label>
-            <select value={form.status} onChange={(e) => update('status', e.target.value as TableStatus)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100">
-              {STATUS_OPTIONS.map((status) => <option key={status} value={status}>{labelStatus(status)}</option>)}
-            </select>
-          </div>
-        </div>
-        <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-1.5">Current order</label>
-          <input value={form.current_order} onChange={(e) => update('current_order', e.target.value)} placeholder="Optional order number" className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100" />
-        </div>
-        <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-1.5">Notes</label>
-          <textarea value={form.notes} onChange={(e) => update('notes', e.target.value)} rows={3} placeholder="Optional table notes" className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 resize-none" />
-        </div>
-        {error && <div className="flex items-start gap-2 rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-sm text-rose-700"><AlertCircle className="h-4 w-4 mt-0.5 shrink-0" /> {error}</div>}
-        <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-          <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button type="submit" disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}{table ? 'Save changes' : 'Add table'}</Button>
-        </div>
-      </form>
+    <Modal open={open} onClose={onClose} size="xl" title={`Table ${order.table_number} order`}>
+      <div className="p-5">
+        {!receiptSale ? (
+          <>
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Order #{order.id.slice(-6).toUpperCase()}</p>
+                <h3 className="mt-1 text-xl font-extrabold text-slate-900">Table {order.table_number}</h3>
+                <p className="mt-1 text-xs text-slate-500 flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" /> {new Date(order.created_at).toLocaleString()}</p>
+              </div>
+              <Badge color={status === 'prepared' ? 'blue' : 'amber'}>{status === 'prepared' ? 'Prepared' : 'Processing'}</Badge>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              {(order.sale_items ?? []).map((item) => (
+                <div key={item.id} className="flex items-start justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
+                  <div>
+                    <p className="text-sm font-bold text-slate-900">{item.name}</p>
+                    <p className="text-xs text-slate-500">{item.quantity} × {formatMoney(Number(item.unit_price), currency)}</p>
+                  </div>
+                  <p className="text-sm font-extrabold text-slate-900">{formatMoney(Number(item.line_total), currency)}</p>
+                </div>
+              ))}
+            </div>
+
+            <AmountSummary sale={order} currency={currency} taxRate={taxRate} />
+
+            <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
+              <p className="text-sm font-bold text-slate-900 mb-3">Payment method</p>
+              <div className="grid grid-cols-3 gap-2">
+                <PayChoice current={payment} value="cash" onClick={setPayment} icon={Banknote} label="Cash" />
+                <PayChoice current={payment} value="card" onClick={setPayment} icon={CreditCard} label="Card" />
+                <PayChoice current={payment} value="other" onClick={setPayment} icon={Wallet} label="Other" />
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-col sm:flex-row gap-2">
+              {status === 'kitchen' && (
+                <Button variant="secondary" className="flex-1" onClick={onPrepared} disabled={updating}>
+                  {updating ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChefHat className="h-4 w-4" />}
+                  Mark prepared
+                </Button>
+              )}
+              <Button className="flex-1" onClick={onComplete} disabled={updating || status !== 'prepared'}>
+                {updating ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                Complete order & show receipt
+              </Button>
+            </div>
+            {status !== 'prepared' && <p className="mt-2 text-xs text-amber-700">Complete button unlocks after the kitchen marks this order as prepared.</p>}
+          </>
+        ) : (
+          <ReceiptView sale={printable} business={business} currency={currency} taxRate={taxRate} onClose={onClose} />
+        )}
+      </div>
     </Modal>
   );
 }
 
-function Stat({ label, value, color = 'slate' }: { label: string; value: number; color?: 'slate' | 'green' | 'amber' | 'red' }) {
-  return <Card className="p-4"><p className="text-xs text-slate-500">{label}</p><p className={`text-2xl font-extrabold ${color === 'green' ? 'text-emerald-600' : color === 'red' ? 'text-rose-600' : color === 'amber' ? 'text-amber-600' : 'text-slate-900'}`}>{value}</p></Card>;
+function AmountSummary({ sale, currency, taxRate }: { sale: Sale; currency: string; taxRate: number }) {
+  return (
+    <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-1.5 text-sm">
+      <div className="flex justify-between text-slate-600"><span>Subtotal</span><span>{formatMoney(Number(sale.subtotal), currency)}</span></div>
+      {Number(sale.discount) > 0 && <div className="flex justify-between text-emerald-600"><span>Discount</span><span>-{formatMoney(Number(sale.discount), currency)}</span></div>}
+      {Number(sale.service_charge) > 0 && <div className="flex justify-between text-slate-600"><span>Service charge</span><span>{formatMoney(Number(sale.service_charge), currency)}</span></div>}
+      {Number(sale.vat) > 0 && <div className="flex justify-between text-slate-600"><span>VAT</span><span>{formatMoney(Number(sale.vat), currency)}</span></div>}
+      {taxRate > 0 && Number(sale.tax) > 0 && <div className="flex justify-between text-slate-600"><span>Tax ({taxRate.toFixed(2)}%)</span><span>{formatMoney(Number(sale.tax), currency)}</span></div>}
+      {Number(sale.delivery_charge) > 0 && <div className="flex justify-between text-slate-600"><span>Delivery</span><span>{formatMoney(Number(sale.delivery_charge), currency)}</span></div>}
+      <div className="flex justify-between border-t border-slate-200 pt-2 text-base"><span className="font-bold text-slate-900">Total amount</span><span className="font-extrabold text-slate-900">{formatMoney(Number(sale.total), currency)}</span></div>
+    </div>
+  );
 }
 
-function labelStatus(status: TableStatus) {
-  return status.charAt(0).toUpperCase() + status.slice(1);
+function PayChoice({ current, value, onClick, icon: Icon, label }: { current: PaymentMethod; value: PaymentMethod; onClick: (v: PaymentMethod) => void; icon: typeof Banknote; label: string }) {
+  const active = current === value;
+  return (
+    <button
+      onClick={() => onClick(value)}
+      className={classNames(
+        'flex flex-col items-center gap-1 rounded-xl border-2 py-3 transition-all',
+        active ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300',
+      )}
+    >
+      <Icon className="h-4 w-4" />
+      <span className="text-xs font-bold">{label}</span>
+    </button>
+  );
 }
 
-function StatusBadge({ status }: { status: TableStatus }) {
-  if (status === 'available') return <Badge color="green">Available</Badge>;
-  if (status === 'occupied') return <Badge color="red">Occupied</Badge>;
-  if (status === 'reserved') return <Badge color="amber">Reserved</Badge>;
-  return <Badge>Cleaning</Badge>;
+function ReceiptView({ sale, business, currency, taxRate, onClose }: { sale: SaleWithItems; business: { business_name: string; address: string; owner_name: string; category: string; phone?: string; receipt_message?: string | null; logo_url?: string | null }; currency: string; taxRate: number; onClose: () => void }) {
+  const meta = CATEGORY_META[business.category as BusinessCategory];
+  return (
+    <div className="print-receipt">
+      <div className="flex flex-col items-center text-center pb-4 border-b border-dashed border-slate-200">
+        <div className={classNames('h-12 w-12 rounded-2xl bg-gradient-to-br grid place-items-center text-white mb-3', meta?.gradient ?? 'from-slate-700 to-slate-900')}>
+          <CheckCircle2 className="h-6 w-6" />
+        </div>
+        <p className="text-lg font-extrabold text-slate-900">Payment received</p>
+        <p className="text-sm text-slate-500">{formatMoney(Number(sale.total), currency)} via {sale.payment_method}</p>
+      </div>
+
+      <div className="py-4 text-center">
+        {business.logo_url ? <img src={business.logo_url} alt="Logo" className="mx-auto h-16 w-16 object-contain mb-2" /> : <Store className="mx-auto h-10 w-10 text-slate-700 mb-2" />}
+        <p className="font-bold text-slate-900">{business.business_name}</p>
+        <p className="text-xs text-slate-500 mt-0.5">{business.address}</p>
+        {business.phone && <p className="text-xs text-slate-500 mt-0.5">Tel: {business.phone}</p>}
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
+        <div className="rounded-lg bg-slate-50 border border-slate-100 p-2"><span className="text-slate-500">Table</span><p className="font-bold text-slate-900">{sale.table_number}</p></div>
+        <div className="rounded-lg bg-slate-50 border border-slate-100 p-2"><span className="text-slate-500">Invoice</span><p className="font-mono font-bold text-slate-900">{sale.id.slice(0, 8).toUpperCase()}</p></div>
+      </div>
+
+      <div className="border-t border-dashed border-slate-200 pt-3 space-y-2">
+        {(sale.sale_items ?? []).map((item) => (
+          <div key={item.id} className="flex justify-between text-sm">
+            <div>
+              <p className="font-medium text-slate-900">{item.name}</p>
+              <p className="text-xs text-slate-500">{item.quantity} × {formatMoney(Number(item.unit_price), currency)}</p>
+            </div>
+            <span className="font-semibold text-slate-900">{formatMoney(Number(item.line_total), currency)}</span>
+          </div>
+        ))}
+      </div>
+
+      <AmountSummary sale={sale} currency={currency} taxRate={taxRate} />
+
+      <div className="mt-4 text-center text-xs text-slate-400">{new Date().toLocaleString()}</div>
+      {business.receipt_message && <p className="mt-3 pt-3 border-t border-dashed border-slate-200 text-center text-xs text-slate-600 italic">{business.receipt_message}</p>}
+
+      <div className="mt-5 flex gap-2 no-print">
+        <Button variant="secondary" className="flex-1" onClick={() => window.print()}><Printer className="h-4 w-4" /> Print receipt</Button>
+        <Button className="flex-1" onClick={onClose}>Close</Button>
+      </div>
+    </div>
+  );
 }

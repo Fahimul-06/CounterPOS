@@ -24,6 +24,7 @@ import {
   Store,
   ChefHat,
   Send,
+  Table2,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import type { Product, Sale, BusinessCategory, Medicine, Dress } from '../../lib/supabase';
@@ -97,6 +98,8 @@ interface ReceiptLine {
 
 type PaymentMethod = 'cash' | 'card' | 'other';
 
+const RESTAURANT_TABLES = Array.from({ length: 20 }, (_, i) => String(i + 1));
+
 export default function PosTerminal() {
   const { business } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
@@ -108,6 +111,7 @@ export default function PosTerminal() {
   const [discount, setDiscount] = useState<string>('');
   const [customerName, setCustomerName] = useState('');
   const [tableNumber, setTableNumber] = useState('');
+  const [bookedTables, setBookedTables] = useState<Set<string>>(new Set());
   const [note, setNote] = useState('');
   const [serviceCharge, setServiceCharge] = useState<string>('');
   const [vatRate, setVatRate] = useState<string>('');
@@ -160,6 +164,26 @@ export default function PosTerminal() {
       mounted = false;
     };
   }, [business]);
+
+
+  const loadBookedTables = useCallback(async () => {
+    if (!business || business.category !== 'restaurant') return;
+    const { data } = await supabase
+      .from('sales')
+      .select('*')
+      .eq('business_id', business.id)
+      .order('created_at', { ascending: false });
+    const active = new Set<string>();
+    ((data ?? []) as Sale[]).forEach((sale) => {
+      const table = String(sale.table_number || '').trim();
+      if (table && ['kitchen', 'prepared'].includes(String(sale.status))) active.add(table);
+    });
+    setBookedTables(active);
+  }, [business]);
+
+  useEffect(() => {
+    loadBookedTables();
+  }, [loadBookedTables]);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -330,8 +354,13 @@ export default function PosTerminal() {
       }));
 
       if (status === 'completed') setCompletedSale({ sale, items });
+      const sentTable = tableNumber.trim();
       clearCart();
-      if (status === 'kitchen') setScanFlash(`Order sent to kitchen${tableNumber.trim() ? ` · Table ${tableNumber.trim()}` : ''}`);
+      if (status === 'kitchen') {
+        setBookedTables((prev) => new Set(prev).add(sentTable));
+        loadBookedTables();
+      }
+      if (status === 'kitchen') setScanFlash(`Order sent to kitchen${sentTable ? ` · Table ${sentTable}` : ''}`);
       if (status === 'kitchen') setTimeout(() => setScanFlash(null), 2000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save order.');
@@ -556,15 +585,44 @@ export default function PosTerminal() {
 
           {isRestaurant && (
             <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
-              <label className="block text-xs font-bold text-amber-800 mb-1.5">Table number *</label>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <label className="block text-xs font-bold text-amber-800">Select table *</label>
+                {tableNumber && <span className="text-[11px] font-bold text-amber-800">Selected: Table {tableNumber}</span>}
+              </div>
+              <div className="grid grid-cols-5 gap-2">
+                {RESTAURANT_TABLES.map((table) => {
+                  const booked = bookedTables.has(table);
+                  const selected = tableNumber === table;
+                  return (
+                    <button
+                      key={table}
+                      type="button"
+                      onClick={() => !booked && setTableNumber(table)}
+                      disabled={booked}
+                      className={classNames(
+                        'min-h-[52px] rounded-xl border-2 px-2 py-1 text-center transition-all',
+                        booked
+                          ? 'border-amber-300 bg-amber-100 text-amber-800 cursor-not-allowed'
+                          : selected
+                            ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
+                            : 'border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50',
+                      )}
+                    >
+                      <Table2 className="h-4 w-4 mx-auto mb-0.5" />
+                      <span className="block text-xs font-extrabold">{table}</span>
+                      <span className="block text-[9px] font-semibold">{booked ? 'Booked' : selected ? 'Selected' : 'Free'}</span>
+                    </button>
+                  );
+                })}
+              </div>
               <input
                 type="text"
                 value={tableNumber}
                 onChange={(e) => setTableNumber(e.target.value)}
-                placeholder="e.g. T-04, 12, VIP-1"
-                className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                placeholder="Custom table e.g. VIP-1"
+                className="mt-2 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
               />
-              <p className="mt-1 text-[11px] text-amber-700">Required when sending food order to kitchen.</p>
+              <p className="mt-1 text-[11px] text-amber-700">Booked tables are locked until the order is completed from the Tables page.</p>
             </div>
           )}
 

@@ -10,6 +10,7 @@ import Medicines from './components/views/Medicines';
 import Dresses from './components/views/Dresses';
 import Sales from './components/views/Sales';
 import Kitchen from './components/views/Kitchen';
+import Tables from './components/views/Tables';
 import Settings from './components/views/Settings';
 import { Spinner } from './components/ui/Shared';
 
@@ -83,6 +84,7 @@ function AuthedApp() {
     <AppLayout current={view} onNavigate={setView}>
       {view === 'dashboard' && <Dashboard onNavigate={setView} />}
       {view === 'pos' && <PosTerminal />}
+      {view === 'tables' && <Tables />}
       {view === 'products' && <Products />}
       {view === 'medicines' && <Medicines />}
       {view === 'dresses' && <Dresses />}

@@ -13,12 +13,13 @@ import {
   Pill,
   Shirt,
   ChefHat,
+  Table2,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { CATEGORY_META, classNames } from '../../lib/utils';
 import type { BusinessCategory } from '../../lib/supabase';
 
-export type View = 'dashboard' | 'pos' | 'products' | 'medicines' | 'dresses' | 'kitchen' | 'sales' | 'settings';
+export type View = 'dashboard' | 'pos' | 'tables' | 'products' | 'medicines' | 'dresses' | 'kitchen' | 'sales' | 'settings';
 
 interface NavItem {
   id: View;
@@ -49,6 +50,14 @@ const DRESSES_NAV: NavItem = {
   description: 'Clothing inventory & stock',
 };
 
+
+const TABLES_NAV: NavItem = {
+  id: 'tables',
+  label: 'Tables',
+  icon: Table2,
+  description: 'Table bookings & receipts',
+};
+
 const KITCHEN_NAV: NavItem = {
   id: 'kitchen',
   label: 'Kitchen',
@@ -69,7 +78,8 @@ function buildNav(category?: string): NavItem[] {
   }
   if (category === 'restaurant') {
     const nav = [...BASE_NAV];
-    nav.splice(3, 0, KITCHEN_NAV);
+    nav.splice(2, 0, TABLES_NAV);
+    nav.splice(4, 0, KITCHEN_NAV);
     return nav;
   }
   return BASE_NAV;
