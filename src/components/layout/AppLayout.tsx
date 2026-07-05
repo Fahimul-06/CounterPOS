@@ -12,12 +12,14 @@ import {
   ChevronDown,
   Pill,
   Shirt,
+  ChefHat,
+  Table2,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { CATEGORY_META, classNames } from '../../lib/utils';
 import type { BusinessCategory } from '../../lib/supabase';
 
-export type View = 'dashboard' | 'pos' | 'products' | 'medicines' | 'dresses' | 'sales' | 'settings';
+export type View = 'dashboard' | 'pos' | 'products' | 'medicines' | 'dresses' | 'kitchen' | 'tables' | 'sales' | 'settings';
 
 interface NavItem {
   id: View;
@@ -48,6 +50,20 @@ const DRESSES_NAV: NavItem = {
   description: 'Clothing inventory & stock',
 };
 
+const KITCHEN_NAV: NavItem = {
+  id: 'kitchen',
+  label: 'Kitchen',
+  icon: ChefHat,
+  description: 'Kitchen order queue',
+};
+
+const TABLES_NAV: NavItem = {
+  id: 'tables',
+  label: 'Tables',
+  icon: Table2,
+  description: 'Restaurant table map',
+};
+
 function buildNav(category?: string): NavItem[] {
   if (category === 'pharmacy') {
     const nav = [...BASE_NAV];
@@ -57,6 +73,11 @@ function buildNav(category?: string): NavItem[] {
   if (category === 'clothing') {
     const nav = [...BASE_NAV];
     nav.splice(3, 0, DRESSES_NAV);
+    return nav;
+  }
+  if (category === 'restaurant') {
+    const nav = [...BASE_NAV];
+    nav.splice(3, 0, KITCHEN_NAV, TABLES_NAV);
     return nav;
   }
   return BASE_NAV;

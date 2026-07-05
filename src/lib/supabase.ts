@@ -99,6 +99,34 @@ export interface Medicine {
   updated_at: string;
 }
 
+
+export interface RestaurantTable {
+  id: string;
+  business_id: string;
+  name: string;
+  capacity: number;
+  section: string | null;
+  status: 'available' | 'occupied' | 'reserved' | 'cleaning';
+  current_order: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KitchenOrder {
+  id: string;
+  business_id: string;
+  order_number: string;
+  table_name: string | null;
+  customer_name: string | null;
+  items: string;
+  priority: 'normal' | 'urgent';
+  status: 'pending' | 'preparing' | 'ready' | 'served' | 'cancelled';
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Dress {
   id: string;
   business_id: string;
@@ -126,7 +154,13 @@ export interface Dress {
 type ApiResult<T = any> = { data: T | null; error: Error | null };
 type AuthListener = (event: string, session: Session | null) => void;
 
-const API_URL = ((import.meta.env.VITE_API_URL as string | undefined) || '/api').replace(/\/$/, '');
+function normalizeApiUrl(value?: string) {
+  const raw = (value || '/api').replace(/\/$/, '');
+  if (raw === '/api') return raw;
+  return raw.endsWith('/api') ? raw : `${raw}/api`;
+}
+
+const API_URL = normalizeApiUrl(import.meta.env.VITE_API_URL as string | undefined);
 const listeners = new Set<AuthListener>();
 
 function getToken() {

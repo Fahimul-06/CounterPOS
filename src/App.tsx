@@ -9,6 +9,8 @@ import Products from './components/views/Products';
 import Medicines from './components/views/Medicines';
 import Dresses from './components/views/Dresses';
 import Sales from './components/views/Sales';
+import Kitchen from './components/views/Kitchen';
+import Tables from './components/views/Tables';
 import Settings from './components/views/Settings';
 import { Spinner } from './components/ui/Shared';
 
@@ -85,6 +87,8 @@ function AuthedApp() {
       {view === 'products' && <Products />}
       {view === 'medicines' && <Medicines />}
       {view === 'dresses' && <Dresses />}
+      {view === 'kitchen' && <Kitchen />}
+      {view === 'tables' && <Tables />}
       {view === 'sales' && <Sales />}
       {view === 'settings' && <Settings />}
     </AppLayout>
