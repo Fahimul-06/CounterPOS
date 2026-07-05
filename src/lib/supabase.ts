@@ -126,7 +126,7 @@ export interface Dress {
 type ApiResult<T = any> = { data: T | null; error: Error | null };
 type AuthListener = (event: string, session: Session | null) => void;
 
-const API_URL = (import.meta.env.VITE_API_URL as string | undefined) || '/api';
+const API_URL = ((import.meta.env.VITE_API_URL as string | undefined) || '/api').replace(/\/$/, '');
 const listeners = new Set<AuthListener>();
 
 function getToken() {
@@ -149,9 +149,16 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   if (token) headers.set('Authorization', `Bearer ${token}`);
   if (!(options.body instanceof FormData) && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
 
-  const res = await fetch(`${API_URL}${path}`, { ...options, headers });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(json?.message || json?.error || 'Request failed');
+  const url = `${API_URL}${path}`;
+  const res = await fetch(url, { ...options, headers });
+  const contentType = res.headers.get('content-type') || '';
+  const json = contentType.includes('application/json') ? await res.json().catch(() => ({})) : {};
+  if (!res.ok) {
+    const details = API_URL === '/api'
+      ? 'Frontend VITE_API_URL is missing. Set it to your Render backend URL ending with /api, then redeploy the frontend.'
+      : `Request failed: ${res.status} ${res.statusText}`;
+    throw new Error(json?.message || json?.error || details);
+  }
   return json as T;
 }
 
