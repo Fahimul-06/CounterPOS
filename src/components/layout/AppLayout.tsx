@@ -15,12 +15,13 @@ import {
   ChefHat,
   Table2,
   CreditCard,
+  WalletCards,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { CATEGORY_META, classNames } from '../../lib/utils';
 import type { BusinessCategory } from '../../lib/supabase';
 
-export type View = 'dashboard' | 'pos' | 'tables' | 'products' | 'medicines' | 'dresses' | 'kitchen' | 'sales' | 'settings' | 'subscription';
+export type View = 'dashboard' | 'pos' | 'tables' | 'products' | 'medicines' | 'dresses' | 'kitchen' | 'sales' | 'expenses' | 'settings' | 'subscription';
 
 interface NavItem {
   id: View;
@@ -34,6 +35,7 @@ const BASE_NAV: NavItem[] = [
   { id: 'pos', label: 'POS Terminal', icon: ScanLine, description: 'Ring up sales' },
   { id: 'products', label: 'Products', icon: Package, description: 'Manage inventory' },
   { id: 'sales', label: 'Sales', icon: Receipt, description: 'History & receipts' },
+  { id: 'expenses', label: 'Expenses', icon: WalletCards, description: 'Daily & monthly costs' },
   { id: 'settings', label: 'Settings', icon: Settings, description: 'Business profile' },
   { id: 'subscription', label: 'Subscription', icon: CreditCard, description: 'Trial, monthly & yearly plan' },
 ];
@@ -110,7 +112,7 @@ export default function AppLayout({ current, onNavigate, children }: Props) {
     <div className="min-h-screen bg-slate-50 flex">
       {/* Sidebar — desktop */}
       <aside className="hidden lg:flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white">
-        <SidebarContent current={current} onNavigate={go} businessName={business?.business_name} meta={meta} nav={nav} />
+        <SidebarContent current={current} onNavigate={go} businessName={business?.business_name} businessLogo={business?.logo_url} meta={meta} nav={nav} />
         <div className="mt-auto p-4 border-t border-slate-200">
           <ProfileCard onSignOut={signOut} business={business} meta={meta} />
         </div>
@@ -127,7 +129,7 @@ export default function AppLayout({ current, onNavigate, children }: Props) {
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <SidebarContent current={current} onNavigate={go} businessName={business?.business_name} meta={meta} nav={nav} />
+            <SidebarContent current={current} onNavigate={go} businessName={business?.business_name} businessLogo={business?.logo_url} meta={meta} nav={nav} />
             <div className="mt-auto p-4 border-t border-slate-200">
               <ProfileCard onSignOut={signOut} business={business} meta={meta} />
             </div>
@@ -149,10 +151,10 @@ export default function AppLayout({ current, onNavigate, children }: Props) {
                 <Menu className="h-5 w-5" />
               </button>
               <div className="lg:hidden flex items-center gap-2">
-                <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 grid place-items-center">
-                  <Store className="h-4 w-4 text-white" />
+                <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 grid place-items-center overflow-hidden">
+                  {business?.logo_url ? <img src={business.logo_url} alt="Logo" className="h-full w-full object-cover" /> : <Store className="h-4 w-4 text-white" />}
                 </div>
-                <span className="font-bold text-slate-900 text-sm">Counterpoint</span>
+                <span className="font-bold text-slate-900 text-sm">{business?.business_name || 'Counterpoint'}</span>
               </div>
               <div className="hidden lg:block">
                 <p className="text-sm font-semibold text-slate-900">{nav.find((n) => n.id === current)?.label}</p>
@@ -173,8 +175,8 @@ export default function AppLayout({ current, onNavigate, children }: Props) {
                   onClick={() => setProfileOpen((o) => !o)}
                   className="flex items-center gap-2 rounded-lg p-1 pr-2 hover:bg-slate-100 transition-colors"
                 >
-                  <div className={classNames('h-8 w-8 rounded-lg grid place-items-center text-white bg-gradient-to-br', meta?.gradient ?? 'from-slate-700 to-slate-900')}>
-                    <span className="text-xs font-bold">{(business?.business_name ?? 'B').charAt(0).toUpperCase()}</span>
+                  <div className={classNames('h-8 w-8 rounded-lg grid place-items-center text-white bg-gradient-to-br overflow-hidden', meta?.gradient ?? 'from-slate-700 to-slate-900')}>
+                    {business?.logo_url ? <img src={business.logo_url} alt="Logo" className="h-full w-full object-cover" /> : <span className="text-xs font-bold">{(business?.business_name ?? 'B').charAt(0).toUpperCase()}</span>}
                   </div>
                   <ChevronDown className="h-4 w-4 text-slate-400 hidden sm:block" />
                 </button>
@@ -218,23 +220,25 @@ function SidebarContent({
   current,
   onNavigate,
   businessName,
+  businessLogo,
   meta,
   nav,
 }: {
   current: View;
   onNavigate: (v: View) => void;
   businessName?: string;
+  businessLogo?: string | null;
   meta: { label: string; gradient: string } | null;
   nav: NavItem[];
 }) {
   return (
     <div className="flex flex-col flex-1">
       <div className="flex items-center gap-3 px-5 h-16 border-b border-slate-200">
-        <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 grid place-items-center shadow-sm">
-          <Store className="h-5 w-5 text-white" />
+        <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 grid place-items-center shadow-sm overflow-hidden">
+          {businessLogo ? <img src={businessLogo} alt="Logo" className="h-full w-full object-cover" /> : <Store className="h-5 w-5 text-white" />}
         </div>
         <div className="min-w-0">
-          <p className="font-bold text-slate-900 text-sm leading-tight">Counterpoint</p>
+          <p className="font-bold text-slate-900 text-sm leading-tight truncate">{businessName || 'Counterpoint'}</p>
           <p className="text-[11px] text-slate-500 leading-tight">POS System</p>
         </div>
       </div>
@@ -265,8 +269,8 @@ function SidebarContent({
         <div className="px-3 pb-2">
           <div className="rounded-xl bg-slate-50 border border-slate-200 p-3">
             <div className="flex items-center gap-2.5">
-              <div className={classNames('h-8 w-8 rounded-lg bg-gradient-to-br grid place-items-center text-white', meta.gradient)}>
-                <Store className="h-4 w-4" />
+              <div className={classNames('h-8 w-8 rounded-lg bg-gradient-to-br grid place-items-center text-white overflow-hidden', meta.gradient)}>
+                {businessLogo ? <img src={businessLogo} alt="Logo" className="h-full w-full object-cover" /> : <Store className="h-4 w-4" />}
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-semibold text-slate-900 truncate">{businessName}</p>

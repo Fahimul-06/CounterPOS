@@ -9,11 +9,11 @@ import {
   Plus,
   ScanLine,
   Receipt,
-  Boxes,
+  WalletCards,
   Clock,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import type { Sale, Product, BusinessCategory } from '../../lib/supabase';
+import type { Sale, Product, BusinessCategory, Expense } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { formatMoney, timeAgo, CATEGORY_META, classNames } from '../../lib/utils';
 import { PageContainer, PageHeader, Card, Button, Spinner, EmptyState } from '../ui/Shared';
@@ -27,19 +27,22 @@ export default function Dashboard({ onNavigate }: Props) {
   const { business } = useAuth();
   const [sales, setSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       if (!business) return;
-      const [salesRes, productsRes] = await Promise.all([
-        supabase.from('sales').select('*').eq('business_id', business.id).order('created_at', { ascending: false }).limit(100),
+      const [salesRes, productsRes, expensesRes] = await Promise.all([
+        supabase.from('sales').select('*').eq('business_id', business.id).order('created_at', { ascending: false }).limit(250),
         supabase.from('products').select('*').eq('business_id', business.id).order('created_at', { ascending: false }),
+        supabase.from('expenses').select('*').eq('business_id', business.id).order('expense_date', { ascending: false }).limit(250),
       ]);
       if (!mounted) return;
       if (salesRes.data) setSales(salesRes.data as Sale[]);
       if (productsRes.data) setProducts(productsRes.data as Product[]);
+      if (expensesRes.data) setExpenses(expensesRes.data as Expense[]);
       setLoading(false);
     })();
     return () => {
@@ -62,6 +65,9 @@ export default function Dashboard({ onNavigate }: Props) {
     });
     const last7Sales = completed.filter((s) => new Date(s.created_at).getTime() >= last7Start);
     const last30Sales = completed.filter((s) => new Date(s.created_at).getTime() >= last30Start);
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const todayExpenses = expenses.filter((e) => new Date(e.expense_date || e.created_at).getTime() >= todayStart);
+    const monthExpenses = expenses.filter((e) => new Date(e.expense_date || e.created_at).getTime() >= thisMonthStart);
 
     const sum = (arr: Sale[]) => arr.reduce((acc, s) => acc + Number(s.total), 0);
     const todayTotal = sum(todaySales);
@@ -69,6 +75,10 @@ export default function Dashboard({ onNavigate }: Props) {
     const last7Total = sum(last7Sales);
     const last30Total = sum(last30Sales);
     const avgOrder = todaySales.length ? todayTotal / todaySales.length : 0;
+    const todayExpenseTotal = todayExpenses.reduce((acc, e) => acc + Number(e.amount || 0), 0);
+    const monthExpenseTotal = monthExpenses.reduce((acc, e) => acc + Number(e.amount || 0), 0);
+    const todayNet = todayTotal - todayExpenseTotal;
+    const monthNet = last30Total - monthExpenseTotal;
 
     const dayChange = yesterdayTotal > 0 ? ((todayTotal - yesterdayTotal) / yesterdayTotal) * 100 : todayTotal > 0 ? 100 : 0;
 
@@ -81,8 +91,12 @@ export default function Dashboard({ onNavigate }: Props) {
       last30Count: last30Sales.length,
       avgOrder,
       dayChange,
+      todayExpenseTotal,
+      monthExpenseTotal,
+      todayNet,
+      monthNet,
     };
-  }, [sales]);
+  }, [sales, expenses]);
 
   const lowStock = useMemo(() => products.filter((p) => p.is_active && p.stock <= 5).sort((a, b) => a.stock - b.stock), [products]);
   const activeProducts = products.filter((p) => p.is_active);
@@ -147,11 +161,11 @@ export default function Dashboard({ onNavigate }: Props) {
           sub={`${stats.todayCount} ${stats.todayCount === 1 ? 'sale' : 'sales'} today`}
         />
         <KpiCard
-          label="Last 7 days"
-          value={formatMoney(stats.last7Total, currency)}
-          icon={TrendingUp}
-          tint="from-brand-500 to-blue-500"
-          sub={`${stats.last7Count} sales this week`}
+          label="Today expenses"
+          value={formatMoney(stats.todayExpenseTotal, currency)}
+          icon={WalletCards}
+          tint="from-rose-500 to-pink-500"
+          sub={`Net today: ${formatMoney(stats.todayNet, currency)}`}
         />
         <KpiCard
           label="Avg. order value"
@@ -161,11 +175,11 @@ export default function Dashboard({ onNavigate }: Props) {
           sub="Today's average ticket"
         />
         <KpiCard
-          label="Active products"
-          value={String(activeProducts.length)}
-          icon={Boxes}
-          tint="from-fuchsia-500 to-pink-500"
-          sub={`${formatMoney(inventoryValue, currency)} inventory cost`}
+          label="Monthly sales"
+          value={formatMoney(stats.last30Total, currency)}
+          icon={TrendingUp}
+          tint="from-brand-500 to-blue-500"
+          sub={`Expenses: ${formatMoney(stats.monthExpenseTotal, currency)}`}
         />
       </div>
 
@@ -318,6 +332,7 @@ export default function Dashboard({ onNavigate }: Props) {
               <QuickAction icon={ScanLine} label="New sale" onClick={() => onNavigate('pos')} tint="bg-brand-50 text-brand-600" />
               <QuickAction icon={Plus} label="Add product" onClick={() => onNavigate('products')} tint="bg-emerald-50 text-emerald-600" />
               <QuickAction icon={Receipt} label="View sales" onClick={() => onNavigate('sales')} tint="bg-amber-50 text-amber-600" />
+              <QuickAction icon={WalletCards} label="Add expense" onClick={() => onNavigate('expenses')} tint="bg-rose-50 text-rose-600" />
               <QuickAction icon={Package} label="Inventory" onClick={() => onNavigate('products')} tint="bg-fuchsia-50 text-fuchsia-600" />
             </div>
           </Card>

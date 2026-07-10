@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Clock, Crown, Loader2, ShieldCheck, Sparkles, XCircle } from 'lucide-react';
+import { CheckCircle2, Clock, Copy, Crown, Loader2, ShieldCheck, Smartphone, Sparkles, XCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { Spinner } from '../ui/Shared';
@@ -21,6 +21,10 @@ export default function Subscription({ forcePayment = false, onBack }: Props) {
   const [loading, setLoading] = useState(true);
   const [subscription, setSubscription] = useState<any>(null);
   const [paying, setPaying] = useState<Plan | null>(null);
+  const [bkashPaying, setBkashPaying] = useState<Plan | null>(null);
+  const [bkashInfo, setBkashInfo] = useState<any>(null);
+  const [bkashTrxId, setBkashTrxId] = useState('');
+  const [confirmingBkash, setConfirmingBkash] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -35,6 +39,13 @@ export default function Subscription({ forcePayment = false, onBack }: Props) {
       window.history.replaceState(null, '', window.location.pathname);
     }
   }, []);
+
+  const reloadSubscription = async () => {
+    const { data, error } = await supabase.subscription.getStatus();
+    if (error) setError(error.message);
+    setSubscription(data?.subscription ?? null);
+    await refreshBusiness();
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -82,6 +93,46 @@ export default function Subscription({ forcePayment = false, onBack }: Props) {
     setError('SSLCommerz checkout URL was not returned.');
   };
 
+  const startBkashPayment = async (plan: Plan) => {
+    setBkashPaying(plan);
+    setError(null);
+    setNotice(null);
+    const { data, error } = await supabase.subscription.bkashPayment(plan);
+    setBkashPaying(null);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    setBkashInfo(data);
+    setBkashTrxId('');
+  };
+
+  const confirmBkashPayment = async () => {
+    if (!bkashInfo?.tran_id || !bkashTrxId.trim()) {
+      setError('Enter the bKash TrxID after sending payment.');
+      return;
+    }
+    setConfirmingBkash(true);
+    setError(null);
+    const { data, error } = await supabase.subscription.confirmBkashPayment({
+      tran_id: bkashInfo.tran_id,
+      customer_trx_id: bkashTrxId.trim(),
+    });
+    setConfirmingBkash(false);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    setBkashInfo(null);
+    setNotice(data?.message || 'bKash payment submitted. Your subscription is active now.');
+    await reloadSubscription();
+  };
+
+  const copyText = async (value: string) => {
+    await navigator.clipboard?.writeText(value);
+    setNotice('Copied to clipboard.');
+  };
+
   if (loading && !business) {
     return (
       <div className="min-h-screen grid place-items-center bg-slate-50">
@@ -105,7 +156,7 @@ export default function Subscription({ forcePayment = false, onBack }: Props) {
                 {expired ? 'Your free trial has ended' : status?.status === 'trialing' ? 'Your 15-day free trial is active' : 'Your subscription is active'}
               </h1>
               <p className="mt-2 text-sm text-slate-200 max-w-2xl">
-                New businesses can use all features free for 15 days. After that, choose a monthly or yearly subscription and pay securely through SSLCommerz.
+                New businesses can use all features free for 15 days. After that, choose a monthly or yearly subscription and pay through SSLCommerz or bKash Merchant.
               </p>
             </div>
             <div className="rounded-2xl bg-white/10 p-4 min-w-[220px]">
@@ -140,9 +191,11 @@ export default function Subscription({ forcePayment = false, onBack }: Props) {
             title="Monthly"
             price="৳999"
             description="Best for testing production with real customers."
-            benefits={['Full POS access', 'Products, sales, kitchen & tables', 'SSLCommerz renewal payment']}
+            benefits={['Full POS access', 'Products, sales, kitchen & tables', 'SSLCommerz or bKash payment']}
             loading={paying === 'monthly'}
+            bkashLoading={bkashPaying === 'monthly'}
             onChoose={() => startCheckout('monthly')}
+            onBkashChoose={() => startBkashPayment('monthly')}
           />
 
           <PlanCard
@@ -152,9 +205,23 @@ export default function Subscription({ forcePayment = false, onBack }: Props) {
             description="Best for long-term business use."
             benefits={['Full yearly access', 'Lower cost than monthly', 'Best for shops and restaurants']}
             loading={paying === 'yearly'}
+            bkashLoading={bkashPaying === 'yearly'}
             onChoose={() => startCheckout('yearly')}
+            onBkashChoose={() => startBkashPayment('yearly')}
             highlighted
           />
+        </div>
+
+        <div className="rounded-3xl border border-pink-100 bg-pink-50/70 p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h2 className="flex items-center gap-2 font-bold text-slate-900"><Smartphone className="h-5 w-5 text-pink-600" /> bKash Merchant payment</h2>
+              <p className="mt-1 text-sm text-slate-600">Merchant number: <span className="font-bold text-slate-900">01409472939</span>. Choose a plan and click Pay by bKash to generate a subscription reference.</p>
+            </div>
+            <button onClick={() => copyText('01409472939')} className="inline-flex items-center justify-center gap-2 rounded-xl border border-pink-200 bg-white px-4 py-2.5 text-sm font-bold text-pink-700 hover:bg-pink-100">
+              <Copy className="h-4 w-4" /> Copy number
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-3">
@@ -170,6 +237,69 @@ export default function Subscription({ forcePayment = false, onBack }: Props) {
           )}
         </div>
       </div>
+
+      {bkashInfo && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/60 p-4">
+          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-soft-lg">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-slate-900">Pay with bKash Merchant</h2>
+                <p className="mt-1 text-sm text-slate-500">Send payment first, then submit your bKash TrxID.</p>
+              </div>
+              <button onClick={() => setBkashInfo(null)} className="rounded-full border border-slate-200 px-3 py-1.5 text-sm font-bold text-slate-500 hover:bg-slate-50">✕</button>
+            </div>
+
+            <div className="mt-5 space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
+              <InfoRow label="Merchant number" value={bkashInfo.merchant_number || '01409472939'} onCopy={() => copyText(bkashInfo.merchant_number || '01409472939')} />
+              <InfoRow label="Amount" value={`৳${Number(bkashInfo.amount || 0).toLocaleString()}`} />
+              <InfoRow label="Plan" value={String(bkashInfo.plan || '').toUpperCase()} />
+              <InfoRow label="Reference" value={bkashInfo.reference || bkashInfo.tran_id} onCopy={() => copyText(bkashInfo.reference || bkashInfo.tran_id)} />
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              <p className="font-bold">Payment steps</p>
+              <ol className="mt-2 list-decimal space-y-1 pl-5">
+                <li>Open bKash app or dial bKash USSD.</li>
+                <li>Choose Merchant payment / Payment.</li>
+                <li>Send the exact amount to <strong>{bkashInfo.merchant_number || '01409472939'}</strong>.</li>
+                <li>Use the reference if bKash asks for one.</li>
+                <li>Paste the bKash TrxID below and confirm.</li>
+              </ol>
+            </div>
+
+            <label className="mt-5 block text-sm font-semibold text-slate-700">bKash TrxID</label>
+            <input
+              value={bkashTrxId}
+              onChange={(e) => setBkashTrxId(e.target.value)}
+              placeholder="Example: A1B2C3D4E5"
+              className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-pink-500 focus:ring-4 focus:ring-pink-100"
+            />
+            <p className="mt-2 text-xs text-slate-500">For accounting accuracy, verify this TrxID in your bKash merchant account.</p>
+
+            <div className="mt-6 flex flex-col sm:flex-row gap-3">
+              <button onClick={confirmBkashPayment} disabled={confirmingBkash} className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-pink-600 px-4 py-3 text-sm font-bold text-white hover:bg-pink-700 disabled:opacity-60">
+                {confirmingBkash && <Loader2 className="h-4 w-4 animate-spin" />}
+                Confirm bKash payment
+              </button>
+              <button onClick={() => setBkashInfo(null)} className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InfoRow({ label, value, onCopy }: { label: string; value: string; onCopy?: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-slate-500">{label}</span>
+      <span className="inline-flex items-center gap-2 text-right font-bold text-slate-900">
+        {value}
+        {onCopy && <button onClick={onCopy} className="rounded-lg p-1 text-slate-500 hover:bg-white hover:text-slate-900"><Copy className="h-4 w-4" /></button>}
+      </span>
     </div>
   );
 }
@@ -199,8 +329,10 @@ function PlanCard({
   description,
   benefits,
   loading,
+  bkashLoading,
   highlighted = false,
   onChoose,
+  onBkashChoose,
 }: {
   plan: Plan;
   title: string;
@@ -208,8 +340,10 @@ function PlanCard({
   description: string;
   benefits: string[];
   loading: boolean;
+  bkashLoading: boolean;
   highlighted?: boolean;
   onChoose: () => void;
+  onBkashChoose: () => void;
 }) {
   return (
     <div className={`relative rounded-3xl border p-5 shadow-soft ${highlighted ? 'border-brand-200 bg-brand-50/60' : 'border-slate-200 bg-white'}`}>
@@ -230,14 +364,24 @@ function PlanCard({
           </li>
         ))}
       </ul>
-      <button
-        onClick={onChoose}
-        disabled={loading}
-        className={`mt-6 w-full inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold text-white transition-colors ${highlighted ? 'bg-brand-600 hover:bg-brand-700' : 'bg-slate-900 hover:bg-slate-800'} disabled:opacity-60`}
-      >
-        {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-        Pay with SSLCommerz
-      </button>
+      <div className="mt-6 space-y-2.5">
+        <button
+          onClick={onChoose}
+          disabled={loading || bkashLoading}
+          className={`w-full inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold text-white transition-colors ${highlighted ? 'bg-brand-600 hover:bg-brand-700' : 'bg-slate-900 hover:bg-slate-800'} disabled:opacity-60`}
+        >
+          {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+          Pay with SSLCommerz
+        </button>
+        <button
+          onClick={onBkashChoose}
+          disabled={loading || bkashLoading}
+          className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-pink-200 bg-white px-4 py-3 text-sm font-bold text-pink-700 hover:bg-pink-50 disabled:opacity-60"
+        >
+          {bkashLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Smartphone className="h-4 w-4" />}
+          Pay by bKash Merchant
+        </button>
+      </div>
     </div>
   );
 }

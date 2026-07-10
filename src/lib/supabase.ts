@@ -79,6 +79,20 @@ export interface SaleItem {
   line_total: number;
 }
 
+export interface Expense {
+  id: string;
+  business_id: string;
+  title: string;
+  category: string;
+  amount: number;
+  payment_method: string;
+  expense_date: string;
+  note: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface SaleWithItems extends Sale {
   sale_items: SaleItem[];
 }
@@ -259,6 +273,39 @@ export const supabase = {
         return { data: null, error: err instanceof Error ? err : new Error('Sign in failed') };
       }
     },
+    async forgotPassword(email: string) {
+      try {
+        const res = await apiRequest<{ message: string; reset_link?: string }>('/auth/forgot-password', {
+          method: 'POST',
+          body: JSON.stringify({ email }),
+        });
+        return { data: res, error: null };
+      } catch (err) {
+        return { data: null, error: err instanceof Error ? err : new Error('Password reset request failed') };
+      }
+    },
+    async resetPassword({ email, token, password }: { email: string; token: string; password: string }) {
+      try {
+        const res = await apiRequest<{ message: string }>('/auth/reset-password', {
+          method: 'POST',
+          body: JSON.stringify({ email, token, password }),
+        });
+        return { data: res, error: null };
+      } catch (err) {
+        return { data: null, error: err instanceof Error ? err : new Error('Password reset failed') };
+      }
+    },
+    async changePassword({ current_password, new_password }: { current_password: string; new_password: string }) {
+      try {
+        const res = await apiRequest<{ message: string }>('/auth/change-password', {
+          method: 'POST',
+          body: JSON.stringify({ current_password, new_password }),
+        });
+        return { data: res, error: null };
+      } catch (err) {
+        return { data: null, error: err instanceof Error ? err : new Error('Password change failed') };
+      }
+    },
     async signUp({ email, password, options }: { email: string; password: string; options?: { data?: Record<string, any> } }) {
       try {
         const res = await apiRequest<{ token: string; user: User }>('/auth/register', {
@@ -301,6 +348,28 @@ export const supabase = {
         return { data: res.data, error: null };
       } catch (err) {
         return { data: null, error: err instanceof Error ? err : new Error('Failed to start checkout') };
+      }
+    },
+    async bkashPayment(plan: 'monthly' | 'yearly') {
+      try {
+        const res = await apiRequest<{ data: any }>('/subscription/bkash-payment', {
+          method: 'POST',
+          body: JSON.stringify({ plan }),
+        });
+        return { data: res.data, error: null };
+      } catch (err) {
+        return { data: null, error: err instanceof Error ? err : new Error('Failed to start bKash payment') };
+      }
+    },
+    async confirmBkashPayment({ tran_id, customer_trx_id }: { tran_id: string; customer_trx_id: string }) {
+      try {
+        const res = await apiRequest<{ data: any }>('/subscription/bkash-confirm', {
+          method: 'POST',
+          body: JSON.stringify({ tran_id, customer_trx_id }),
+        });
+        return { data: res.data, error: null };
+      } catch (err) {
+        return { data: null, error: err instanceof Error ? err : new Error('Failed to confirm bKash payment') };
       }
     },
   },

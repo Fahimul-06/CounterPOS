@@ -60,6 +60,12 @@ export default function Settings() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [passwordForm, setPasswordForm] = useState({ current_password: '', new_password: '', confirm_password: '' });
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetLink, setResetLink] = useState<string | null>(null);
 
   useEffect(() => {
     if (business) {
@@ -121,6 +127,53 @@ export default function Settings() {
       setError(err instanceof Error ? err.message : 'Failed to save settings.');
     } finally {
       setSaving(false);
+    }
+  };
+
+
+  const requestPasswordReset = async () => {
+    if (!user?.email) return;
+    setPasswordError(null);
+    setPasswordMessage(null);
+    setResetLink(null);
+    setResetBusy(true);
+    try {
+      const { data, error } = await supabase.auth.forgotPassword(user.email);
+      if (error) throw error;
+      setPasswordMessage(data?.message || 'Password reset request created.');
+      if (data?.reset_link) setResetLink(data.reset_link);
+    } catch (err) {
+      setPasswordError(err instanceof Error ? err.message : 'Failed to create password reset request.');
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
+  const changePassword = async (e: FormEvent) => {
+    e.preventDefault();
+    setPasswordError(null);
+    setPasswordMessage(null);
+    if (passwordForm.new_password.length < 6) {
+      setPasswordError('New password must be at least 6 characters.');
+      return;
+    }
+    if (passwordForm.new_password !== passwordForm.confirm_password) {
+      setPasswordError('New password and confirm password do not match.');
+      return;
+    }
+    setPasswordSaving(true);
+    try {
+      const { error } = await supabase.auth.changePassword({
+        current_password: passwordForm.current_password,
+        new_password: passwordForm.new_password,
+      });
+      if (error) throw error;
+      setPasswordMessage('Password changed successfully.');
+      setPasswordForm({ current_password: '', new_password: '', confirm_password: '' });
+    } catch (err) {
+      setPasswordError(err instanceof Error ? err.message : 'Failed to change password.');
+    } finally {
+      setPasswordSaving(false);
     }
   };
 
@@ -306,14 +359,66 @@ export default function Settings() {
           </Card>
 
           <Card className="p-5 sm:p-6">
-            <h4 className="font-semibold text-slate-900 text-sm mb-3">Account</h4>
+            <h4 className="font-semibold text-slate-900 text-sm mb-1">Account & password</h4>
+            <p className="text-sm text-slate-500 mb-4">Change your password from settings. Public forgot-password reset routes are also available for signed-out users.</p>
             <FormField label="Email" icon={Mail}>
               <input type="email" value={user?.email ?? ''} disabled className="input bg-slate-50 text-slate-500 cursor-not-allowed" />
             </FormField>
-            <p className="mt-2 text-xs text-slate-500 flex items-center gap-1.5">
+            <p className="mt-2 mb-5 text-xs text-slate-500 flex items-center gap-1.5">
               <Lock className="h-3 w-3" />
               Email changes are not supported in this version.
             </p>
+
+            <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Forgot password reset</p>
+                  <p className="text-xs text-slate-500">Generate a secure reset link for this account email. In production, connect an email provider to send it automatically.</p>
+                </div>
+                <Button type="button" variant="secondary" disabled={resetBusy} onClick={requestPasswordReset}>
+                  {resetBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                  Create reset link
+                </Button>
+              </div>
+              {resetLink && (
+                <div className="mt-3 rounded-lg bg-white border border-slate-200 p-3">
+                  <p className="text-xs font-semibold text-slate-500 mb-1">Development reset link</p>
+                  <a href={resetLink} className="text-xs text-brand-700 break-all hover:underline">{resetLink}</a>
+                </div>
+              )}
+            </div>
+
+            <form onSubmit={changePassword} className="space-y-4 border-t border-slate-100 pt-5">
+              <div className="grid sm:grid-cols-3 gap-4">
+                <FormField label="Current password" icon={Lock}>
+                  <input type="password" value={passwordForm.current_password} onChange={(e) => setPasswordForm((f) => ({ ...f, current_password: e.target.value }))} className="input" />
+                </FormField>
+                <FormField label="New password" icon={Lock}>
+                  <input type="password" value={passwordForm.new_password} onChange={(e) => setPasswordForm((f) => ({ ...f, new_password: e.target.value }))} minLength={6} className="input" />
+                </FormField>
+                <FormField label="Confirm password" icon={Lock}>
+                  <input type="password" value={passwordForm.confirm_password} onChange={(e) => setPasswordForm((f) => ({ ...f, confirm_password: e.target.value }))} minLength={6} className="input" />
+                </FormField>
+              </div>
+              {passwordError && (
+                <div className="flex items-start gap-2.5 rounded-xl bg-rose-50 border border-rose-200 px-3.5 py-3 text-sm text-rose-700">
+                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <span>{passwordError}</span>
+                </div>
+              )}
+              {passwordMessage && (
+                <div className="flex items-start gap-2.5 rounded-xl bg-emerald-50 border border-emerald-200 px-3.5 py-3 text-sm text-emerald-700">
+                  <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" />
+                  <span>{passwordMessage}</span>
+                </div>
+              )}
+              <div className="flex justify-end">
+                <Button type="submit" disabled={passwordSaving} variant="outline">
+                  {passwordSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
+                  Update password
+                </Button>
+              </div>
+            </form>
           </Card>
         </div>
       </div>

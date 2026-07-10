@@ -9,6 +9,7 @@ import Products from './components/views/Products';
 import Medicines from './components/views/Medicines';
 import Dresses from './components/views/Dresses';
 import Sales from './components/views/Sales';
+import Expenses from './components/views/Expenses';
 import Kitchen from './components/views/Kitchen';
 import Tables from './components/views/Tables';
 import Settings from './components/views/Settings';
@@ -103,6 +104,7 @@ function AuthedApp() {
       {view === 'dresses' && <Dresses />}
       {view === 'kitchen' && <Kitchen />}
       {view === 'sales' && <Sales />}
+      {view === 'expenses' && <Expenses />}
       {view === 'settings' && <Settings />}
       {view === 'subscription' && <Subscription onBack={() => setView('dashboard')} />}
     </AppLayout>

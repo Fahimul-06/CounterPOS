@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import multer from 'multer';
 import mongoose from 'mongoose';
 import { fileURLToPath } from 'url';
@@ -43,6 +44,8 @@ function schema(def, opts = {}) {
 const User = mongoose.model('User', schema({
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   password_hash: { type: String, required: true },
+  reset_token_hash: { type: String, default: null },
+  reset_token_expires_at: { type: Date, default: null },
 }));
 
 const Business = mongoose.model('Business', schema({
@@ -159,6 +162,17 @@ const SaleItem = mongoose.model('SaleItem', schema({
   line_total: { type: Number, default: 0 },
 }, { timestamps: { createdAt: 'created_at', updatedAt: false } }));
 
+const Expense = mongoose.model('Expense', schema({
+  business_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', index: true },
+  title: { type: String, required: true },
+  category: { type: String, default: 'General' },
+  amount: { type: Number, required: true, default: 0 },
+  payment_method: { type: String, default: 'cash' },
+  expense_date: { type: Date, default: Date.now },
+  note: { type: String, default: null },
+  created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+}));
+
 const PaymentTransaction = mongoose.model('PaymentTransaction', schema({
   business_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', index: true },
   tran_id: { type: String, required: true, unique: true, index: true },
@@ -168,11 +182,14 @@ const PaymentTransaction = mongoose.model('PaymentTransaction', schema({
   currency: { type: String, default: 'BDT' },
   status: { type: String, enum: ['pending', 'paid', 'failed', 'cancelled'], default: 'pending' },
   gateway_response: { type: mongoose.Schema.Types.Mixed, default: null },
+  payment_method: { type: String, enum: ['sslcommerz', 'bkash_manual'], default: 'sslcommerz' },
+  bkash_merchant_number: { type: String, default: null },
+  customer_trx_id: { type: String, default: null },
   paid_at: { type: Date, default: null },
   created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }));
 
-const models = { businesses: Business, products: Product, medicines: Medicine, dresses: Dress, sales: Sale, sale_items: SaleItem, payment_transactions: PaymentTransaction };
+const models = { businesses: Business, products: Product, medicines: Medicine, dresses: Dress, sales: Sale, sale_items: SaleItem, expenses: Expense, payment_transactions: PaymentTransaction };
 
 function sign(user) {
   return jwt.sign({ id: String(user._id), email: user.email }, JWT_SECRET, { expiresIn: '7d' });
@@ -277,6 +294,7 @@ function clean(doc) {
   if (obj.created_by) obj.created_by = String(obj.created_by);
   if (obj.sale_id) obj.sale_id = String(obj.sale_id);
   if (obj.product_id) obj.product_id = String(obj.product_id);
+  if (obj.expense_date instanceof Date) obj.expense_date = obj.expense_date.toISOString();
   delete obj._id;
   return obj;
 }
@@ -321,6 +339,60 @@ app.post('/api/auth/login', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+app.post('/api/auth/forgot-password', async (req, res, next) => {
+  try {
+    const email = String(req.body.email || '').toLowerCase().trim();
+    if (!email) return res.status(400).json({ message: 'Email is required.' });
+    const user = await User.findOne({ email });
+    // Always return a neutral message so attackers cannot enumerate accounts.
+    if (!user) return res.json({ message: 'If this email exists, a password reset link has been created.' });
+    const token = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
+    user.reset_token_hash = await bcrypt.hash(token, 10);
+    user.reset_token_expires_at = new Date(Date.now() + 30 * 60 * 1000);
+    await user.save();
+    const resetLink = `${clientBaseUrl()}/reset-password?token=${token}&email=${encodeURIComponent(email)}`;
+    console.log(`Password reset link for ${email}: ${resetLink}`);
+    const payload = { message: 'If this email exists, a password reset link has been created. Check the backend logs or connect an email provider for production delivery.' };
+    if (process.env.NODE_ENV !== 'production') payload.reset_link = resetLink;
+    res.json(payload);
+  } catch (err) { next(err); }
+});
+
+app.post('/api/auth/reset-password', async (req, res, next) => {
+  try {
+    const email = String(req.body.email || '').toLowerCase().trim();
+    const token = String(req.body.token || '');
+    const password = String(req.body.password || '');
+    if (!email || !token || password.length < 6) return res.status(400).json({ message: 'Email, reset token, and a password of at least 6 characters are required.' });
+    const user = await User.findOne({ email });
+    if (!user || !user.reset_token_hash || !user.reset_token_expires_at || user.reset_token_expires_at.getTime() < Date.now()) {
+      return res.status(400).json({ message: 'Reset link is invalid or expired.' });
+    }
+    const ok = await bcrypt.compare(token, user.reset_token_hash);
+    if (!ok) return res.status(400).json({ message: 'Reset link is invalid or expired.' });
+    user.password_hash = await bcrypt.hash(password, 10);
+    user.reset_token_hash = null;
+    user.reset_token_expires_at = null;
+    await user.save();
+    res.json({ message: 'Password reset successfully.' });
+  } catch (err) { next(err); }
+});
+
+app.post('/api/auth/change-password', auth, async (req, res, next) => {
+  try {
+    const current_password = String(req.body.current_password || '');
+    const new_password = String(req.body.new_password || '');
+    if (new_password.length < 6) return res.status(400).json({ message: 'New password must be at least 6 characters.' });
+    const user = await User.findById(req.user.id);
+    if (!user || !(await bcrypt.compare(current_password, user.password_hash))) return res.status(401).json({ message: 'Current password is incorrect.' });
+    user.password_hash = await bcrypt.hash(new_password, 10);
+    user.reset_token_hash = null;
+    user.reset_token_expires_at = null;
+    await user.save();
+    res.json({ message: 'Password changed successfully.' });
+  } catch (err) { next(err); }
+});
+
 app.get('/api/auth/me', auth, async (req, res) => {
   res.json({ user: { id: req.user.id, email: req.user.email } });
 });
@@ -353,6 +425,7 @@ app.post('/api/subscription/checkout', auth, async (req, res, next) => {
       currency: 'BDT',
       status: 'pending',
       created_by: req.user.id,
+      payment_method: 'sslcommerz',
     });
     const base = apiBaseUrl(req);
     const payload = {
@@ -448,6 +521,65 @@ app.post('/api/subscription/ipn', async (req, res, next) => {
       }
     }
     res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+
+app.post('/api/subscription/bkash-payment', auth, async (req, res, next) => {
+  try {
+    const plan = String(req.body.plan || '').toLowerCase();
+    const config = getPlanConfig(plan);
+    if (!config) return res.status(400).json({ message: 'Select monthly or yearly plan.' });
+    const business = await Business.findById(req.user.id);
+    if (!business) return res.status(404).json({ message: 'Business profile not found.' });
+    const merchantNumber = String(process.env.BKASH_MERCHANT_NUMBER || '01409472939').trim();
+    const tranId = `BKASH-SUB-${req.user.id}-${Date.now()}`;
+    const transaction = await PaymentTransaction.create({
+      business_id: req.user.id,
+      tran_id: tranId,
+      plan,
+      amount: config.amount,
+      currency: 'BDT',
+      status: 'pending',
+      payment_method: 'bkash_manual',
+      bkash_merchant_number: merchantNumber,
+      created_by: req.user.id,
+      gateway_response: {
+        instruction: 'Manual bKash Merchant payment. Customer must pay the amount to the merchant number and submit the bKash TrxID.',
+      },
+    });
+    res.json({
+      data: {
+        tran_id: tranId,
+        plan,
+        amount: config.amount,
+        currency: 'BDT',
+        merchant_number: merchantNumber,
+        reference: tranId,
+        instruction: `Send ৳${config.amount} to bKash Merchant number ${merchantNumber}. Use ${tranId} as reference if bKash asks for a reference, then submit your bKash TrxID here.`,
+        transaction: clean(transaction),
+      },
+    });
+  } catch (err) { next(err); }
+});
+
+app.post('/api/subscription/bkash-confirm', auth, async (req, res, next) => {
+  try {
+    const tranId = String(req.body.tran_id || '').trim();
+    const customerTrxId = String(req.body.customer_trx_id || '').trim();
+    if (!tranId || !customerTrxId) return res.status(400).json({ message: 'Subscription reference and bKash TrxID are required.' });
+    const transaction = await PaymentTransaction.findOne({ tran_id: tranId, business_id: req.user.id, payment_method: 'bkash_manual' });
+    if (!transaction) return res.status(404).json({ message: 'bKash payment request not found.' });
+    if (transaction.status === 'paid') return res.json({ data: { subscription_ends_at: await Business.findById(req.user.id).then(b => b?.subscription_ends_at), transaction: clean(transaction) } });
+    transaction.customer_trx_id = customerTrxId;
+    await activateSubscription(transaction, {
+      payment_method: 'bkash_manual',
+      merchant_number: transaction.bkash_merchant_number,
+      customer_trx_id: customerTrxId,
+      note: 'Manual bKash payment confirmation submitted by customer. Verify the TrxID in the merchant bKash account for accounting accuracy.',
+    });
+    const business = await Business.findById(req.user.id);
+    res.json({ data: { message: 'bKash payment submitted. Subscription is active now.', subscription: businessSubscriptionInfo(business), business: clean(business), transaction: clean(transaction) } });
   } catch (err) { next(err); }
 });
 
