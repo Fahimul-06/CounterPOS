@@ -264,55 +264,54 @@ export default function PharmacyPOS() {
                 <p className="mt-1 text-sm text-slate-500">Add medicine from the left or scan barcode.</p>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-2.5">
                 {cart.map((l, idx) => {
                   const price = Number(l.medicine[l.unit === 'box' ? 'box_price' : l.unit === 'strip' ? 'strip_price' : 'price'] || l.medicine.selling_price || l.medicine.price || 0);
                   const pieces = piecesFromUnits(l.medicine, l.quantity, l.unit);
                   const lineTotal = price * l.quantity;
                   return (
-                    <div key={`${l.medicine.id}-${idx}`} className="rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-sm ring-1 ring-slate-100 transition hover:border-emerald-200 hover:shadow-soft">
-                      <div className="flex items-start gap-3">
-                        <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 ring-1 ring-emerald-100">
-                          {l.medicine.image_url ? <img src={l.medicine.image_url} alt={l.medicine.name} className="h-full w-full object-cover" /> : <FileText className="h-6 w-6 text-emerald-600" />}
+                    <div key={`${l.medicine.id}-${idx}`} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm ring-1 ring-slate-100 transition hover:border-emerald-200 hover:shadow-soft">
+                      <div className="flex items-start gap-2.5">
+                        <div className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-xl bg-gradient-to-br from-emerald-50 to-teal-50 ring-1 ring-emerald-100">
+                          {l.medicine.image_url ? <img src={l.medicine.image_url} alt={l.medicine.name} className="h-full w-full object-cover" /> : <FileText className="h-5 w-5 text-emerald-600" />}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
-                              <p className="line-clamp-2 text-base font-black leading-5 text-slate-950">{l.medicine.name}</p>
-                              <p className="mt-1 line-clamp-1 text-xs font-semibold text-slate-500">{l.medicine.generic_name || 'Generic'} · {l.medicine.strength || 'Strength'} · Rack {l.medicine.rack_location || 'N/A'}</p>
+                              <p className="line-clamp-1 text-sm font-black leading-5 text-slate-950">{l.medicine.name}</p>
+                              <p className="mt-0.5 line-clamp-1 text-[11px] font-semibold text-slate-500">{l.medicine.generic_name || 'Generic'} · {l.medicine.strength || 'Strength'} · Rack {l.medicine.rack_location || 'N/A'}</p>
                             </div>
-                            <button onClick={() => remove(idx)} className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl text-rose-500 hover:bg-rose-50" aria-label="Remove item">
-                              <Trash2 className="h-4 w-4" />
+                            <button onClick={() => remove(idx)} className="grid h-7 w-7 shrink-0 place-items-center rounded-xl text-rose-500 hover:bg-rose-50" aria-label="Remove item">
+                              <Trash2 className="h-3.5 w-3.5" />
                             </button>
                           </div>
-                          <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-extrabold text-slate-500">
-                            <span className="rounded-full bg-slate-100 px-2.5 py-1">FEFO: {pieces} pieces</span>
-                            <span className="rounded-full bg-slate-100 px-2.5 py-1">Rate: {formatMoney(price, business?.currency || 'BDT')} / {l.unit}</span>
-                            {(l.medicine.barcode || l.medicine.sku) && <span className="rounded-full bg-slate-100 px-2.5 py-1">{l.medicine.barcode || l.medicine.sku}</span>}
+                          <div className="mt-1.5 flex flex-wrap gap-1.5 text-[10px] font-extrabold text-slate-500">
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5">FEFO: {pieces}</span>
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5">{formatMoney(price, business?.currency || 'BDT')} / {l.unit}</span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="mt-4 grid grid-cols-1 gap-3">
+                      <div className="mt-3 grid grid-cols-2 gap-2">
                         <label className="block">
-                          <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-400">Unit</span>
-                          <select value={l.unit} onChange={(e) => setUnit(idx, e.target.value as any)} className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm font-black outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-100">
+                          <span className="mb-1 block text-[9px] font-black uppercase tracking-wide text-slate-400">Unit</span>
+                          <select value={l.unit} onChange={(e) => setUnit(idx, e.target.value as any)} className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-2 text-xs font-black outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-100">
                             <option value="piece">Piece</option>
                             <option value="strip">Strip</option>
                             <option value="box">Box</option>
                           </select>
                         </label>
                         <label className="block">
-                          <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-400">Quantity</span>
-                          <div className="flex h-12 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-                            <button onClick={() => setQty(idx, l.quantity - 1)} className="grid w-12 place-items-center text-slate-600 hover:bg-white"><Minus className="h-4 w-4" /></button>
-                            <input value={l.quantity} onChange={(e) => setQty(idx, Number(e.target.value || 1))} className="w-full min-w-0 bg-transparent text-center text-base font-black outline-none" />
-                            <button onClick={() => setQty(idx, l.quantity + 1)} className="grid w-12 place-items-center text-slate-600 hover:bg-white"><Plus className="h-4 w-4" /></button>
+                          <span className="mb-1 block text-[9px] font-black uppercase tracking-wide text-slate-400">Qty</span>
+                          <div className="flex h-9 overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                            <button onClick={() => setQty(idx, l.quantity - 1)} className="grid w-8 place-items-center text-slate-600 hover:bg-white"><Minus className="h-3.5 w-3.5" /></button>
+                            <input value={l.quantity} onChange={(e) => setQty(idx, Number(e.target.value || 1))} className="w-full min-w-0 bg-transparent text-center text-sm font-black outline-none" />
+                            <button onClick={() => setQty(idx, l.quantity + 1)} className="grid w-8 place-items-center text-slate-600 hover:bg-white"><Plus className="h-3.5 w-3.5" /></button>
                           </div>
                         </label>
-                        <div className="rounded-2xl bg-slate-950 px-4 py-3 text-right text-white">
-                          <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Line total</p>
-                          <p className="mt-0.5 whitespace-nowrap text-lg font-black">{formatMoney(lineTotal, business?.currency || 'BDT')}</p>
+                        <div className="col-span-2 rounded-xl bg-slate-950 px-3 py-2 text-right text-white">
+                          <p className="text-[9px] font-black uppercase tracking-wide text-slate-400">Line total</p>
+                          <p className="mt-0.5 whitespace-nowrap text-sm font-black">{formatMoney(lineTotal, business?.currency || 'BDT')}</p>
                         </div>
                       </div>
                     </div>
