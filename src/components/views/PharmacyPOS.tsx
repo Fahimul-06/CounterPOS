@@ -224,7 +224,7 @@ export default function PharmacyPOS() {
           </div>
         </section>
 
-        <aside className="overflow-hidden rounded-[2rem] border border-white/80 bg-white shadow-soft-lg backdrop-blur-xl xl:sticky xl:top-20 xl:max-h-[calc(100vh-6rem)] flex flex-col">
+        <aside className="flex min-h-0 flex-col overflow-hidden rounded-[2rem] border border-white/80 bg-white shadow-soft-lg backdrop-blur-xl xl:sticky xl:top-20 xl:h-[calc(100vh-6rem)] xl:max-h-[calc(100vh-6rem)]">
           <div className="border-b border-slate-200/80 bg-slate-950 p-4 text-white">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -256,7 +256,7 @@ export default function PharmacyPOS() {
             </div>
           </div>
 
-          <div className="flex-1 min-h-[380px] overflow-y-auto pos-scrollbar p-4 sm:p-5">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pos-cart-scroll p-4 sm:p-5">
             {cart.length === 0 ? (
               <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
                 <PackageCheck className="mx-auto h-10 w-10 text-emerald-500" />
