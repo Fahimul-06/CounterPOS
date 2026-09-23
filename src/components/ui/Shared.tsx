@@ -3,23 +3,25 @@ import { X, Loader2 } from 'lucide-react';
 import { classNames } from '../../lib/utils';
 
 export function PageContainer({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={classNames('px-4 sm:px-6 py-6 max-w-7xl mx-auto', className)}>{children}</div>;
+  return <div className={classNames('px-3 sm:px-5 lg:px-6 py-5 sm:py-6 max-w-7xl mx-auto animate-fade-in', className)}>{children}</div>;
 }
 
 export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-3 mb-6">
-      <div>
-        <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">{title}</h1>
-        {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
+    <div className="mb-6 rounded-3xl border border-white/80 bg-white/80 p-4 sm:p-5 shadow-soft backdrop-blur-xl">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-950">{title}</h1>
+          {subtitle && <p className="mt-1.5 max-w-3xl text-sm leading-6 text-slate-500">{subtitle}</p>}
+        </div>
+        {action && <div className="flex shrink-0 flex-wrap gap-2">{action}</div>}
       </div>
-      {action}
     </div>
   );
 }
 
 export function Card({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={classNames('rounded-2xl bg-white border border-slate-200 card-shadow', className)}>{children}</div>;
+  return <div className={classNames('rounded-3xl bg-white/90 border border-white/80 shadow-soft backdrop-blur-sm', className)}>{children}</div>;
 }
 
 export function Button({
@@ -41,16 +43,16 @@ export function Button({
   className?: string;
 } & Record<string, unknown>) {
   const variants = {
-    primary: 'bg-slate-900 text-white hover:bg-slate-800 shadow-sm',
-    secondary: 'bg-slate-100 text-slate-700 hover:bg-slate-200',
+    primary: 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm shadow-emerald-600/20',
+    secondary: 'bg-slate-100 text-slate-800 hover:bg-slate-200',
     ghost: 'text-slate-600 hover:bg-slate-100',
-    danger: 'bg-rose-600 text-white hover:bg-rose-700 shadow-sm',
-    outline: 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50',
+    danger: 'bg-rose-600 text-white hover:bg-rose-700 shadow-sm shadow-rose-600/20',
+    outline: 'border border-slate-200 bg-white text-slate-700 hover:border-emerald-200 hover:bg-emerald-50/40',
   };
   const sizes = {
     sm: 'px-3 py-1.5 text-xs',
-    md: 'px-4 py-2 text-sm',
-    lg: 'px-5 py-2.5 text-sm',
+    md: 'px-4 py-2.5 text-sm',
+    lg: 'px-5 py-3 text-sm',
   };
   return (
     <button
@@ -58,7 +60,7 @@ export function Button({
       onClick={onClick}
       disabled={disabled}
       className={classNames(
-        'inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-all active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed',
+        'inline-flex items-center justify-center gap-2 rounded-2xl font-extrabold transition-all active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-emerald-100',
         variants[variant],
         sizes[size],
         className,
@@ -83,8 +85,8 @@ export function EmptyState({
 }) {
   return (
     <div className="flex flex-col items-center justify-center text-center py-12 px-6">
-      <div className="h-14 w-14 rounded-2xl bg-slate-100 grid place-items-center mb-4">
-        <Icon className="h-7 w-7 text-slate-400" />
+      <div className="h-14 w-14 rounded-2xl bg-emerald-50 grid place-items-center mb-4">
+        <Icon className="h-7 w-7 text-emerald-600" />
       </div>
       <p className="text-base font-semibold text-slate-900">{title}</p>
       {description && <p className="mt-1 text-sm text-slate-500 max-w-sm">{description}</p>}
@@ -150,13 +152,13 @@ export function Spinner({ label }: { label?: string }) {
 
 export function Badge({ children, color = 'slate' }: { children: ReactNode; color?: 'slate' | 'green' | 'amber' | 'red' | 'blue' }) {
   const colors = {
-    slate: 'bg-slate-100 text-slate-700',
-    green: 'bg-emerald-100 text-emerald-700',
-    amber: 'bg-amber-100 text-amber-700',
-    red: 'bg-rose-100 text-rose-700',
-    blue: 'bg-blue-100 text-blue-700',
+    slate: 'bg-slate-100 text-slate-700 ring-1 ring-slate-200/80',
+    green: 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200/80',
+    amber: 'bg-amber-100 text-amber-700 ring-1 ring-amber-200/80',
+    red: 'bg-rose-100 text-rose-700 ring-1 ring-rose-200/80',
+    blue: 'bg-blue-100 text-blue-700 ring-1 ring-blue-200/80',
   };
-  return <span className={classNames('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold', colors[color])}>{children}</span>;
+  return <span className={classNames('inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-extrabold capitalize', colors[color])}>{children}</span>;
 }
 
 export function ConfirmDialog({

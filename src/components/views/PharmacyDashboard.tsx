@@ -60,7 +60,7 @@ export default function PharmacyDashboard({ onNavigate }: { onNavigate?: (view: 
   if (loading) return <Spinner label="Loading pharmacy dashboard…" />;
 
   return (
-    <PageContainer className="max-w-8xl">
+    <PageContainer className="max-w-[1600px]">
       <PageHeader
         title="Pharmacy Dashboard"
         subtitle="Sales, profit, purchases, expiry alerts, stock valuation, and dues in one place."
