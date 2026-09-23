@@ -141,7 +141,7 @@ export default function PharmacyPOS() {
 
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-transparent p-2 sm:p-4 lg:p-5">
-      <div className="mx-auto grid max-w-[1920px] grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_420px] 2xl:grid-cols-[minmax(0,1fr)_440px]">
+      <div className="mx-auto grid max-w-[1920px] grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_400px] 2xl:grid-cols-[minmax(0,1fr)_430px]">
         <section className="min-w-0 overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-soft backdrop-blur-xl">
           <div className="border-b border-slate-200/80 bg-white/70 p-4 sm:p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -181,7 +181,7 @@ export default function PharmacyPOS() {
             </div>
           </div>
 
-          <div className="max-h-[calc(100vh-17rem)] overflow-y-auto p-4 sm:p-5">
+          <div className="max-h-[calc(100vh-17rem)] overflow-y-auto pos-scrollbar p-4 sm:p-5">
             {filtered.length === 0 ? (
               <EmptyState icon={Search} title="No medicine found" description="Try brand name, generic name, SKU, barcode, category or rack location." />
             ) : (
@@ -224,8 +224,8 @@ export default function PharmacyPOS() {
           </div>
         </section>
 
-        <aside className="flex min-h-[760px] flex-col overflow-hidden rounded-[2rem] border border-white/80 bg-white shadow-soft-lg backdrop-blur-xl xl:h-[calc(100vh-6rem)] xl:max-h-[980px]">
-          <div className="shrink-0 border-b border-slate-200/80 bg-slate-950 p-4 text-white">
+        <aside className="flex min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-[2rem] border border-white/80 bg-white shadow-soft-lg backdrop-blur-xl xl:min-h-[calc(100vh-7rem)]">
+          <div className="border-b border-slate-200/80 bg-slate-950 p-4 text-white">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-300">Current invoice</p>
@@ -238,7 +238,7 @@ export default function PharmacyPOS() {
             </div>
           </div>
 
-          <div className="shrink-0 space-y-3 border-b border-slate-200 bg-slate-50/80 p-4">
+          <div className="space-y-3 border-b border-slate-200 bg-slate-50/80 p-4">
             <div className="grid grid-cols-1 gap-3">
               <label className="block">
                 <span className="mb-1 flex items-center gap-1.5 text-xs font-black uppercase tracking-wide text-slate-500"><MapPin className="h-3.5 w-3.5" /> Branch</span>
@@ -256,7 +256,7 @@ export default function PharmacyPOS() {
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pos-cart-scroll p-4">
+          <div className="min-h-[360px] flex-1 overflow-y-auto overscroll-contain pos-cart-scroll p-4">
             {cart.length === 0 ? (
               <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
                 <PackageCheck className="mx-auto h-10 w-10 text-emerald-500" />
@@ -322,7 +322,7 @@ export default function PharmacyPOS() {
             )}
           </div>
 
-          <div className="shrink-0 border-t border-slate-200 bg-white p-4 shadow-[0_-14px_30px_rgba(15,23,42,0.08)]">
+          <div className="shrink-0 border-t border-slate-200 bg-white p-4">
             {error && <div className="mb-3 flex items-start gap-2 rounded-2xl bg-rose-50 border border-rose-200 px-3 py-2 text-sm font-bold text-rose-700"><AlertCircle className="h-4 w-4 mt-0.5" />{error}</div>}
 
             <div className="mb-4 grid grid-cols-2 gap-2">
@@ -337,12 +337,12 @@ export default function PharmacyPOS() {
             </div>
 
             <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-              <div className="mb-3 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2">
+              <div className="mb-3 grid grid-cols-1 gap-2">
                 <label className="flex-1">
                   <span className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">Discount</span>
                   <input type="number" value={discount} onChange={(e) => setDiscount(e.target.value)} placeholder="0" className="form-control bg-white" />
                 </label>
-                {cart.length > 0 && <Button variant="ghost" onClick={() => setCart([])} className="mt-6 text-rose-600 hover:bg-rose-50">Clear</Button>}
+                {cart.length > 0 && <Button variant="ghost" onClick={() => setCart([])} className="text-rose-600 hover:bg-rose-50">Clear cart</Button>}
               </div>
               <div className="space-y-1 text-sm">
                 <div className="flex justify-between text-slate-500"><span>Subtotal</span><span className="font-bold text-slate-700">{formatMoney(subtotal, business?.currency || 'BDT')}</span></div>
