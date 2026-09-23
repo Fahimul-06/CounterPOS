@@ -722,8 +722,40 @@ async function syncMedicineStock(medicineId, businessId) {
 }
 
 async function seedPharmacyMockData(businessId, userId, options = {}) {
+  const medicineSeeds = [
+    { medicine_type: 'Tablet', name: 'Napa 500', brand_name: 'Napa', generic_name: 'Paracetamol', manufacturer: 'Beximco Pharmaceuticals Ltd.', reason: 'Demo: fever and pain category item', category: 'Analgesic', strength: '500mg', dosage_form: 'Tablet', sku: 'BD-MED-NAPA-500', rack_location: 'A1', purchase_price: 0.85, mrp: 1.5, selling_price: 1.5, barcode: 'BDMED000001', batch_number: 'NP2501', pieces_per_strip: 10, strips_per_box: 20, expiry_days: 540, expiry_alert_days: 180, low_stock_threshold: 100 },
+    { medicine_type: 'Tablet', name: 'Napa Extend 665', brand_name: 'Napa Extend', generic_name: 'Paracetamol', manufacturer: 'Beximco Pharmaceuticals Ltd.', reason: 'Demo: pain and fever category item', category: 'Analgesic', strength: '665mg', dosage_form: 'Tablet', sku: 'BD-MED-NAPA-EXT-665', rack_location: 'A1', purchase_price: 1.4, mrp: 2.5, selling_price: 2.5, barcode: 'BDMED000002', batch_number: 'NPE2501', pieces_per_strip: 10, strips_per_box: 20, expiry_days: 300, expiry_alert_days: 180, low_stock_threshold: 80 },
+    { medicine_type: 'Tablet', name: 'Ace 500', brand_name: 'Ace', generic_name: 'Paracetamol', manufacturer: 'Square Pharmaceuticals PLC', reason: 'Demo: fever and pain category item', category: 'Analgesic', strength: '500mg', dosage_form: 'Tablet', sku: 'BD-MED-ACE-500', rack_location: 'A2', purchase_price: 0.8, mrp: 1.5, selling_price: 1.5, barcode: 'BDMED000003', batch_number: 'AC2501', pieces_per_strip: 10, strips_per_box: 20, expiry_days: 180, expiry_alert_days: 90, low_stock_threshold: 100 },
+    { medicine_type: 'Syrup', name: 'Napa Syrup', brand_name: 'Napa', generic_name: 'Paracetamol', manufacturer: 'Beximco Pharmaceuticals Ltd.', reason: 'Demo: pediatric fever category item', category: 'Analgesic', strength: '120mg/5ml', dosage_form: 'Syrup', sku: 'BD-MED-NAPA-SYP', rack_location: 'A3', purchase_price: 24, mrp: 35, selling_price: 35, barcode: 'BDMED000004', batch_number: 'NPS2501', pieces_per_strip: 1, strips_per_box: 1, expiry_days: 90, expiry_alert_days: 90, low_stock_threshold: 15 },
+    { medicine_type: 'Capsule', name: 'Seclo 20', brand_name: 'Seclo', generic_name: 'Omeprazole', manufacturer: 'Square Pharmaceuticals PLC', reason: 'Demo: antiulcer/PPI category item', category: 'Gastrointestinal', strength: '20mg', dosage_form: 'Capsule', sku: 'BD-MED-SECLO-20', rack_location: 'B1', purchase_price: 4.2, mrp: 6.0, selling_price: 6.0, barcode: 'BDMED000005', batch_number: 'SC2501', pieces_per_strip: 10, strips_per_box: 10, expiry_days: 85, expiry_alert_days: 90, low_stock_threshold: 60 },
+    { medicine_type: 'Capsule', name: 'Sergel 20', brand_name: 'Sergel', generic_name: 'Esomeprazole', manufacturer: 'Healthcare Pharmaceuticals Ltd.', reason: 'Demo: antiulcer/PPI category item', category: 'Gastrointestinal', strength: '20mg', dosage_form: 'Capsule', sku: 'BD-MED-SERGEL-20', rack_location: 'B1', purchase_price: 5.5, mrp: 8.0, selling_price: 8.0, barcode: 'BDMED000006', batch_number: 'SG2501', pieces_per_strip: 10, strips_per_box: 10, expiry_days: 420, expiry_alert_days: 180, low_stock_threshold: 60 },
+    { medicine_type: 'Tablet', name: 'Maxpro 20', brand_name: 'Maxpro', generic_name: 'Esomeprazole', manufacturer: 'Renata PLC', reason: 'Demo: antiulcer/PPI category item', category: 'Gastrointestinal', strength: '20mg', dosage_form: 'Tablet', sku: 'BD-MED-MAXPRO-20', rack_location: 'B2', purchase_price: 5.5, mrp: 8.0, selling_price: 8.0, barcode: 'BDMED000007', batch_number: 'MX2501', pieces_per_strip: 10, strips_per_box: 10, expiry_days: 25, expiry_alert_days: 30, low_stock_threshold: 60 },
+    { medicine_type: 'Tablet', name: 'DP 10', brand_name: 'DP', generic_name: 'Domperidone', manufacturer: 'Opsonin Pharma Ltd.', reason: 'Demo: antiemetic/gastro category item', category: 'Gastrointestinal', strength: '10mg', dosage_form: 'Tablet', sku: 'BD-MED-DP-10', rack_location: 'B3', purchase_price: 1.4, mrp: 2.0, selling_price: 2.0, barcode: 'BDMED000008', batch_number: 'DP2501', pieces_per_strip: 10, strips_per_box: 20, expiry_days: 150, expiry_alert_days: 180, low_stock_threshold: 80 },
+    { medicine_type: 'Syrup', name: 'DP Plus Syrup', brand_name: 'DP Plus', generic_name: 'Domperidone', manufacturer: 'Incepta Pharmaceuticals Ltd.', reason: 'Demo: antiemetic/gastro category item', category: 'Gastrointestinal', strength: '5mg/5ml', dosage_form: 'Syrup', sku: 'BD-MED-DP-PLUS-SYP', rack_location: 'B4', purchase_price: 55, mrp: 75, selling_price: 75, barcode: 'BDMED000009', batch_number: 'DPP2501', pieces_per_strip: 1, strips_per_box: 1, expiry_days: -12, expiry_alert_days: 30, low_stock_threshold: 10 },
+    { medicine_type: 'Tablet', name: 'Monas 10', brand_name: 'Monas', generic_name: 'Montelukast', manufacturer: 'The ACME Laboratories Ltd.', reason: 'Demo: allergy/asthma category item', category: 'Respiratory', strength: '10mg', dosage_form: 'Tablet', sku: 'BD-MED-MONAS-10', rack_location: 'C1', purchase_price: 10.5, mrp: 16, selling_price: 16, barcode: 'BDMED000010', batch_number: 'MN2501', pieces_per_strip: 10, strips_per_box: 12, expiry_days: 45, expiry_alert_days: 90, low_stock_threshold: 40 },
+    { medicine_type: 'Tablet', name: 'Fexo 120', brand_name: 'Fexo', generic_name: 'Fexofenadine', manufacturer: 'Square Pharmaceuticals PLC', reason: 'Demo: antihistamine/allergy category item', category: 'Antihistamine', strength: '120mg', dosage_form: 'Tablet', sku: 'BD-MED-FEXO-120', rack_location: 'C2', purchase_price: 6.0, mrp: 9.0, selling_price: 9.0, barcode: 'BDMED000011', batch_number: 'FX2501', pieces_per_strip: 10, strips_per_box: 10, expiry_days: 365, expiry_alert_days: 180, low_stock_threshold: 50 },
+    { medicine_type: 'Tablet', name: 'Histacin 4', brand_name: 'Histacin', generic_name: 'Chlorpheniramine Maleate', manufacturer: 'Square Pharmaceuticals PLC', reason: 'Demo: antihistamine/allergy category item', category: 'Antihistamine', strength: '4mg', dosage_form: 'Tablet', sku: 'BD-MED-HISTACIN-4', rack_location: 'C2', purchase_price: 0.35, mrp: 0.7, selling_price: 0.7, barcode: 'BDMED000012', batch_number: 'HS2501', pieces_per_strip: 10, strips_per_box: 20, expiry_days: 210, expiry_alert_days: 180, low_stock_threshold: 120 },
+    { medicine_type: 'Tablet', name: 'Zimax 500', brand_name: 'Zimax', generic_name: 'Azithromycin', manufacturer: 'Square Pharmaceuticals PLC', reason: 'Demo: antibiotic category item', category: 'Antibiotic', strength: '500mg', dosage_form: 'Tablet', sku: 'BD-MED-ZIMAX-500', rack_location: 'D1', purchase_price: 26, mrp: 35, selling_price: 35, barcode: 'BDMED000013', batch_number: 'ZX2501', pieces_per_strip: 3, strips_per_box: 20, expiry_days: 120, expiry_alert_days: 180, low_stock_threshold: 30 },
+    { medicine_type: 'Capsule', name: 'Moxacil 500', brand_name: 'Moxacil', generic_name: 'Amoxicillin', manufacturer: 'Square Pharmaceuticals PLC', reason: 'Demo: antibiotic category item', category: 'Antibiotic', strength: '500mg', dosage_form: 'Capsule', sku: 'BD-MED-MOXACIL-500', rack_location: 'D1', purchase_price: 4.8, mrp: 7.0, selling_price: 7.0, barcode: 'BDMED000014', batch_number: 'MXC2501', pieces_per_strip: 10, strips_per_box: 10, expiry_days: 540, expiry_alert_days: 180, low_stock_threshold: 40 },
+    { medicine_type: 'Tablet', name: 'Ciprocin 500', brand_name: 'Ciprocin', generic_name: 'Ciprofloxacin', manufacturer: 'Square Pharmaceuticals PLC', reason: 'Demo: antibiotic category item', category: 'Antibiotic', strength: '500mg', dosage_form: 'Tablet', sku: 'BD-MED-CIPROCIN-500', rack_location: 'D2', purchase_price: 8.5, mrp: 12, selling_price: 12, barcode: 'BDMED000015', batch_number: 'CP2501', pieces_per_strip: 10, strips_per_box: 10, expiry_days: 270, expiry_alert_days: 180, low_stock_threshold: 40 },
+    { medicine_type: 'Capsule', name: 'Cef-3 200', brand_name: 'Cef-3', generic_name: 'Cefixime', manufacturer: 'Square Pharmaceuticals PLC', reason: 'Demo: antibiotic category item', category: 'Antibiotic', strength: '200mg', dosage_form: 'Capsule', sku: 'BD-MED-CEF3-200', rack_location: 'D3', purchase_price: 23, mrp: 32, selling_price: 32, barcode: 'BDMED000016', batch_number: 'CF2501', pieces_per_strip: 6, strips_per_box: 10, expiry_days: 90, expiry_alert_days: 90, low_stock_threshold: 24 },
+    { medicine_type: 'Tablet', name: 'Amdocal 5', brand_name: 'Amdocal', generic_name: 'Amlodipine', manufacturer: 'Beximco Pharmaceuticals Ltd.', reason: 'Demo: antihypertensive category item', category: 'Cardiac', strength: '5mg', dosage_form: 'Tablet', sku: 'BD-MED-AMDOCAL-5', rack_location: 'E1', purchase_price: 2.8, mrp: 5, selling_price: 5, barcode: 'BDMED000017', batch_number: 'AD2501', pieces_per_strip: 10, strips_per_box: 20, expiry_days: 365, expiry_alert_days: 180, low_stock_threshold: 70 },
+    { medicine_type: 'Tablet', name: 'DP-R 5', brand_name: 'DP-R', generic_name: 'Rosuvastatin', manufacturer: 'Drug International Ltd.', reason: 'Demo: lipid-lowering category item', category: 'Cardiac', strength: '5mg', dosage_form: 'Tablet', sku: 'BD-MED-DPR-5', rack_location: 'E1', purchase_price: 7, mrp: 10, selling_price: 10, barcode: 'BDMED000018', batch_number: 'DPR2501', pieces_per_strip: 10, strips_per_box: 10, expiry_days: 180, expiry_alert_days: 180, low_stock_threshold: 50 },
+    { medicine_type: 'Tablet', name: 'Losardil 50', brand_name: 'Losardil', generic_name: 'Losartan Potassium', manufacturer: 'Square Pharmaceuticals PLC', reason: 'Demo: antihypertensive category item', category: 'Cardiac', strength: '50mg', dosage_form: 'Tablet', sku: 'BD-MED-LOSARDIL-50', rack_location: 'E2', purchase_price: 5, mrp: 8, selling_price: 8, barcode: 'BDMED000019', batch_number: 'LS2501', pieces_per_strip: 10, strips_per_box: 10, expiry_days: 300, expiry_alert_days: 180, low_stock_threshold: 50 },
+    { medicine_type: 'Tablet', name: 'Comet 500', brand_name: 'Comet', generic_name: 'Metformin Hydrochloride', manufacturer: 'Square Pharmaceuticals PLC', reason: 'Demo: anti-diabetic category item', category: 'Diabetes', strength: '500mg', dosage_form: 'Tablet', sku: 'BD-MED-COMET-500', rack_location: 'F1', purchase_price: 2, mrp: 3.5, selling_price: 3.5, barcode: 'BDMED000020', batch_number: 'CM2501', pieces_per_strip: 10, strips_per_box: 20, expiry_days: 420, expiry_alert_days: 180, low_stock_threshold: 80 },
+    { medicine_type: 'Tablet', name: 'DPZ 10', brand_name: 'DPZ', generic_name: 'Dapagliflozin', manufacturer: 'Popular Pharmaceuticals PLC', reason: 'Demo: anti-diabetic category item', category: 'Diabetes', strength: '10mg', dosage_form: 'Tablet', sku: 'BD-MED-DPZ-10', rack_location: 'F1', purchase_price: 10, mrp: 15, selling_price: 15, barcode: 'BDMED000021', batch_number: 'DPZ2501', pieces_per_strip: 10, strips_per_box: 10, expiry_days: 75, expiry_alert_days: 90, low_stock_threshold: 40 },
+    { medicine_type: 'Tablet', name: 'Ceevit', brand_name: 'Ceevit', generic_name: 'Vitamin C', manufacturer: 'Square Pharmaceuticals PLC', reason: 'Demo: vitamin/supplement category item', category: 'Vitamin & Supplement', strength: '250mg', dosage_form: 'Tablet', sku: 'BD-MED-CEEVIT', rack_location: 'G1', purchase_price: 1.2, mrp: 2, selling_price: 2, barcode: 'BDMED000022', batch_number: 'CV2501', pieces_per_strip: 10, strips_per_box: 20, expiry_days: 180, expiry_alert_days: 180, low_stock_threshold: 100 },
+    { medicine_type: 'Tablet', name: 'Calbo-D', brand_name: 'Calbo-D', generic_name: 'Calcium + Vitamin D3', manufacturer: 'Square Pharmaceuticals PLC', reason: 'Demo: calcium/vitamin category item', category: 'Vitamin & Supplement', strength: '500mg + 200IU', dosage_form: 'Tablet', sku: 'BD-MED-CALBO-D', rack_location: 'G2', purchase_price: 6, mrp: 9, selling_price: 9, barcode: 'BDMED000023', batch_number: 'CBD2501', pieces_per_strip: 10, strips_per_box: 10, expiry_days: 600, expiry_alert_days: 180, low_stock_threshold: 50 },
+    { medicine_type: 'Sachet', name: 'Orsaline-N', brand_name: 'Orsaline-N', generic_name: 'Oral Rehydration Salts', manufacturer: 'SMC Enterprise Ltd.', reason: 'Demo: oral rehydration category item', category: 'ORS & Electrolyte', strength: 'ORS sachet', dosage_form: 'Sachet', sku: 'BD-MED-ORSALINE-N', rack_location: 'H1', purchase_price: 4, mrp: 6, selling_price: 6, barcode: 'BDMED000024', batch_number: 'ORS2501', pieces_per_strip: 1, strips_per_box: 50, expiry_days: 365, expiry_alert_days: 180, low_stock_threshold: 100 },
+    { medicine_type: 'Cream', name: 'Pevisone Cream', brand_name: 'Pevisone', generic_name: 'Econazole + Triamcinolone', manufacturer: 'Healthcare Pharmaceuticals Ltd.', reason: 'Demo: dermatology category item', category: 'Dermatology', strength: '10g', dosage_form: 'Cream', sku: 'BD-MED-PEVISONE-CRM', rack_location: 'I1', purchase_price: 65, mrp: 90, selling_price: 90, barcode: 'BDMED000025', batch_number: 'PV2501', pieces_per_strip: 1, strips_per_box: 1, expiry_days: 240, expiry_alert_days: 180, low_stock_threshold: 20 },
+    { medicine_type: 'Drops', name: 'Napa Drops', brand_name: 'Napa', generic_name: 'Paracetamol', manufacturer: 'Beximco Pharmaceuticals Ltd.', reason: 'Demo: pediatric drops category item', category: 'Pediatric', strength: '80mg/ml', dosage_form: 'Drops', sku: 'BD-MED-NAPA-DROPS', rack_location: 'A3', purchase_price: 15, mrp: 22, selling_price: 22, barcode: 'BDMED000026', batch_number: 'NPD2501', pieces_per_strip: 1, strips_per_box: 1, expiry_days: 30, expiry_alert_days: 30, low_stock_threshold: 15 },
+    { medicine_type: 'Suspension', name: 'Moxacil DS', brand_name: 'Moxacil', generic_name: 'Amoxicillin', manufacturer: 'Square Pharmaceuticals PLC', reason: 'Demo: pediatric antibiotic category item', category: 'Antibiotic', strength: '250mg/5ml', dosage_form: 'Suspension', sku: 'BD-MED-MOXACIL-DS', rack_location: 'D4', purchase_price: 48, mrp: 70, selling_price: 70, barcode: 'BDMED000027', batch_number: 'MXDS2501', pieces_per_strip: 1, strips_per_box: 1, expiry_days: 60, expiry_alert_days: 90, low_stock_threshold: 12 },
+    { medicine_type: 'Inhaler', name: 'DP-Haler 100', brand_name: 'DP-Haler', generic_name: 'Salbutamol', manufacturer: 'Aristopharma Ltd.', reason: 'Demo: respiratory inhaler category item', category: 'Respiratory', strength: '100mcg/puff', dosage_form: 'Inhaler', sku: 'BD-MED-DPHALER-100', rack_location: 'C4', purchase_price: 145, mrp: 190, selling_price: 190, barcode: 'BDMED000028', batch_number: 'DPH2501', pieces_per_strip: 1, strips_per_box: 1, expiry_days: 150, expiry_alert_days: 180, low_stock_threshold: 8 },
+    { medicine_type: 'Injection', name: 'Ceftriaxone 1g Inj', brand_name: 'DP-Cef', generic_name: 'Ceftriaxone', manufacturer: 'Incepta Pharmaceuticals Ltd.', reason: 'Demo: injectable antibiotic category item', category: 'Antibiotic', strength: '1g/vial', dosage_form: 'Injection', sku: 'BD-MED-CEFTRIAXONE-1G', rack_location: 'J1', purchase_price: 70, mrp: 110, selling_price: 110, barcode: 'BDMED000029', batch_number: 'CTX2501', pieces_per_strip: 1, strips_per_box: 10, expiry_days: 300, expiry_alert_days: 180, low_stock_threshold: 10 },
+    { medicine_type: 'Tablet', name: 'Gastrum 20', brand_name: 'Gastrum', generic_name: 'Rabeprazole', manufacturer: 'Ibn Sina Pharmaceutical Industry PLC', reason: 'Demo: antiulcer/PPI category item', category: 'Gastrointestinal', strength: '20mg', dosage_form: 'Tablet', sku: 'BD-MED-GASTRUM-20', rack_location: 'B5', purchase_price: 4.5, mrp: 7, selling_price: 7, barcode: 'BDMED000030', batch_number: 'GS2501', pieces_per_strip: 10, strips_per_box: 10, expiry_days: 720, expiry_alert_days: 180, low_stock_threshold: 50 },
+  ];
+
   const existing = await Medicine.countDocuments({ business_id: businessId });
-  if (existing > 0 && options.skipIfExists) return { seeded: false, reason: 'existing_data' };
   if (existing > 0 && options.reset) {
     await Promise.all([
       Medicine.deleteMany({ business_id: businessId }), MedicineBatch.deleteMany({ business_id: businessId }), Supplier.deleteMany({ business_id: businessId }),
@@ -735,114 +767,180 @@ async function seedPharmacyMockData(businessId, userId, options = {}) {
     ]);
   }
 
-  const [mainBranch, secondBranch] = await Branch.insertMany([
-    { business_id: businessId, name: 'Main Branch', code: 'MAIN', address: 'Dhanmondi, Dhaka', phone: '01700000001' },
-    { business_id: businessId, name: 'Mirpur Branch', code: 'MIR', address: 'Mirpur, Dhaka', phone: '01700000002' },
+  const [mainBranch, secondBranch] = await Promise.all([
+    Branch.findOneAndUpdate(
+      { business_id: businessId, code: 'MAIN' },
+      { $setOnInsert: { business_id: businessId, name: 'Main Branch', code: 'MAIN', address: 'Dhanmondi, Dhaka', phone: '01700000001', is_active: true } },
+      { upsert: true, new: true }
+    ),
+    Branch.findOneAndUpdate(
+      { business_id: businessId, code: 'MIR' },
+      { $setOnInsert: { business_id: businessId, name: 'Mirpur Branch', code: 'MIR', address: 'Mirpur, Dhaka', phone: '01700000002', is_active: true } },
+      { upsert: true, new: true }
+    ),
   ]);
 
-  const suppliers = await Supplier.insertMany([
-    { business_id: businessId, name: 'Square Pharma Depot', phone: '01711111111', email: 'depot@square.example', address: 'Tejgaon Industrial Area, Dhaka', balance_due: 18500 },
-    { business_id: businessId, name: 'Beximco Pharma Distribution', phone: '01822222222', email: 'distribution@beximco.example', address: 'Dhanmondi, Dhaka', balance_due: 12200 },
-    { business_id: businessId, name: 'Incepta Wholesale Point', phone: '01933333333', email: 'sales@incepta.example', address: 'Uttara, Dhaka', balance_due: 7800 },
-    { business_id: businessId, name: 'Renata Medicine Supply', phone: '01644444444', email: 'supply@renata.example', address: 'Mirpur, Dhaka', balance_due: 4200 },
-    { business_id: businessId, name: 'Healthcare Pharma Distributor', phone: '01555555555', email: 'order@healthcare.example', address: 'Mohakhali, Dhaka', balance_due: 0 },
-  ]);
-
-  const medicineSeeds = [
-    { medicine_type: 'Tablet', name: 'Napa 500', brand_name: 'Napa', generic_name: 'Paracetamol', manufacturer: 'Beximco Pharmaceuticals', reason: 'Fever and pain', category: 'Analgesic', strength: '500mg', dosage_form: 'Tablet', sku: 'BD-MED-NAPA-500', rack_location: 'A1-01', purchase_price: 1.2, mrp: 1.5, selling_price: 1.5, barcode: '8941100500011', batch_number: 'NP2401', pieces_per_strip: 10, strips_per_box: 20, expiry_days: 180, expiry_alert_days: 90, low_stock_threshold: 80 },
-    { medicine_type: 'Tablet', name: 'Napa Extra', brand_name: 'Napa Extra', generic_name: 'Paracetamol + Caffeine', manufacturer: 'Beximco Pharmaceuticals', reason: 'Headache and pain', category: 'Analgesic', strength: '500mg + 65mg', dosage_form: 'Tablet', sku: 'BD-MED-NAPA-EX', rack_location: 'A1-02', purchase_price: 2.2, mrp: 3, selling_price: 3, barcode: '8941100500028', batch_number: 'NEX2402', pieces_per_strip: 10, strips_per_box: 20, expiry_days: 365, expiry_alert_days: 180, low_stock_threshold: 60 },
-    { medicine_type: 'Tablet', name: 'Ace 500', brand_name: 'Ace', generic_name: 'Paracetamol', manufacturer: 'Square Pharmaceuticals', reason: 'Fever and pain', category: 'Analgesic', strength: '500mg', dosage_form: 'Tablet', sku: 'BD-MED-ACE-500', rack_location: 'A1-03', purchase_price: 1.2, mrp: 1.5, selling_price: 1.5, barcode: '8941100500035', batch_number: 'ACE2403', pieces_per_strip: 10, strips_per_box: 20, expiry_days: 30, expiry_alert_days: 30, low_stock_threshold: 100 },
-    { medicine_type: 'Capsule', name: 'Seclo 20', brand_name: 'Seclo', generic_name: 'Omeprazole', manufacturer: 'Square Pharmaceuticals', reason: 'Acidity and gastric ulcer', category: 'Gastrointestinal', strength: '20mg', dosage_form: 'Capsule', sku: 'BD-MED-SECLO-20', rack_location: 'B2-01', purchase_price: 4.8, mrp: 6, selling_price: 6, barcode: '8941100500042', batch_number: 'SC2404', pieces_per_strip: 10, strips_per_box: 10, expiry_days: 85, expiry_alert_days: 90, low_stock_threshold: 70 },
-    { medicine_type: 'Capsule', name: 'Maxpro 20', brand_name: 'Maxpro', generic_name: 'Esomeprazole', manufacturer: 'Renata Limited', reason: 'Acidity and reflux', category: 'Gastrointestinal', strength: '20mg', dosage_form: 'Capsule', sku: 'BD-MED-MAXPRO-20', rack_location: 'B2-02', purchase_price: 5.5, mrp: 7, selling_price: 7, barcode: '8941100500059', batch_number: 'MX2405', pieces_per_strip: 10, strips_per_box: 10, expiry_days: 420, expiry_alert_days: 180, low_stock_threshold: 50 },
-    { medicine_type: 'Capsule', name: 'Sergel 20', brand_name: 'Sergel', generic_name: 'Esomeprazole', manufacturer: 'Healthcare Pharmaceuticals', reason: 'Acidity and reflux', category: 'Gastrointestinal', strength: '20mg', dosage_form: 'Capsule', sku: 'BD-MED-SERGEL-20', rack_location: 'B2-03', purchase_price: 5.7, mrp: 7, selling_price: 7, barcode: '8941100500066', batch_number: 'SG2406', pieces_per_strip: 10, strips_per_box: 10, expiry_days: 12, expiry_alert_days: 30, low_stock_threshold: 40 },
-    { medicine_type: 'Tablet', name: 'Monas 10', brand_name: 'Monas', generic_name: 'Montelukast', manufacturer: 'Acme Laboratories', reason: 'Allergy and asthma support', category: 'Respiratory', strength: '10mg', dosage_form: 'Tablet', sku: 'BD-MED-MONAS-10', rack_location: 'C1-01', purchase_price: 12, mrp: 16, selling_price: 16, barcode: '8941100500073', batch_number: 'MN2407', pieces_per_strip: 10, strips_per_box: 12, expiry_days: 25, expiry_alert_days: 30, low_stock_threshold: 35 },
-    { medicine_type: 'Tablet', name: 'Fexo 120', brand_name: 'Fexo', generic_name: 'Fexofenadine', manufacturer: 'Square Pharmaceuticals', reason: 'Allergy symptoms', category: 'Antihistamine', strength: '120mg', dosage_form: 'Tablet', sku: 'BD-MED-FEXO-120', rack_location: 'C1-02', purchase_price: 7, mrp: 9, selling_price: 9, barcode: '8941100500080', batch_number: 'FX2408', pieces_per_strip: 10, strips_per_box: 10, expiry_days: 180, expiry_alert_days: 90, low_stock_threshold: 40 },
-    { medicine_type: 'Tablet', name: 'Alatrol 10', brand_name: 'Alatrol', generic_name: 'Cetirizine', manufacturer: 'Square Pharmaceuticals', reason: 'Allergy and itching', category: 'Antihistamine', strength: '10mg', dosage_form: 'Tablet', sku: 'BD-MED-ALATROL-10', rack_location: 'C1-03', purchase_price: 2, mrp: 3, selling_price: 3, barcode: '8941100500097', batch_number: 'AL2409', pieces_per_strip: 10, strips_per_box: 20, expiry_days: 90, expiry_alert_days: 90, low_stock_threshold: 90 },
-    { medicine_type: 'Tablet', name: 'DP 10', brand_name: 'DP', generic_name: 'Domperidone', manufacturer: 'Incepta Pharmaceuticals', reason: 'Nausea and vomiting', category: 'Gastrointestinal', strength: '10mg', dosage_form: 'Tablet', sku: 'BD-MED-DP-10', rack_location: 'B3-01', purchase_price: 2.5, mrp: 3.5, selling_price: 3.5, barcode: '8941100500103', batch_number: 'DP2410', pieces_per_strip: 10, strips_per_box: 20, expiry_days: 210, expiry_alert_days: 180, low_stock_threshold: 50 },
-    { medicine_type: 'Suspension', name: 'Napa Paediatric Drops', brand_name: 'Napa Drops', generic_name: 'Paracetamol', manufacturer: 'Beximco Pharmaceuticals', reason: 'Child fever and pain', category: 'Paediatric', strength: '80mg/ml', dosage_form: 'Drops', sku: 'BD-MED-NAPA-DROP', rack_location: 'P1-01', purchase_price: 25, mrp: 35, selling_price: 35, barcode: '8941100500110', batch_number: 'NPD2411', pieces_per_strip: 1, strips_per_box: 1, expiry_days: 160, expiry_alert_days: 90, low_stock_threshold: 20 },
-    { medicine_type: 'Syrup', name: 'Histacin Syrup', brand_name: 'Histacin', generic_name: 'Chlorpheniramine Maleate', manufacturer: 'Square Pharmaceuticals', reason: 'Allergy and cold symptoms', category: 'Antihistamine', strength: '2mg/5ml', dosage_form: 'Syrup', sku: 'BD-MED-HIST-SYP', rack_location: 'S1-01', purchase_price: 28, mrp: 40, selling_price: 40, barcode: '8941100500127', batch_number: 'HS2412', pieces_per_strip: 1, strips_per_box: 1, expiry_days: 360, expiry_alert_days: 180, low_stock_threshold: 15 },
-    { medicine_type: 'Syrup', name: 'Ambrox Syrup', brand_name: 'Ambrox', generic_name: 'Ambroxol', manufacturer: 'Square Pharmaceuticals', reason: 'Cough with mucus', category: 'Respiratory', strength: '15mg/5ml', dosage_form: 'Syrup', sku: 'BD-MED-AMBROX-SYP', rack_location: 'S1-02', purchase_price: 45, mrp: 60, selling_price: 60, barcode: '8941100500134', batch_number: 'AM2413', pieces_per_strip: 1, strips_per_box: 1, expiry_days: 44, expiry_alert_days: 90, low_stock_threshold: 18 },
-    { medicine_type: 'Tablet', name: 'Ceevit 250', brand_name: 'Ceevit', generic_name: 'Vitamin C', manufacturer: 'Square Pharmaceuticals', reason: 'Vitamin supplement', category: 'Vitamin and Supplement', strength: '250mg', dosage_form: 'Chewable Tablet', sku: 'BD-MED-CEEVIT-250', rack_location: 'V1-01', purchase_price: 1.8, mrp: 2.5, selling_price: 2.5, barcode: '8941100500141', batch_number: 'CV2414', pieces_per_strip: 10, strips_per_box: 30, expiry_days: 540, expiry_alert_days: 180, low_stock_threshold: 120 },
-    { medicine_type: 'Tablet', name: 'DP Plus', brand_name: 'DP Plus', generic_name: 'Domperidone + Omeprazole', manufacturer: 'Incepta Pharmaceuticals', reason: 'Acidity with nausea', category: 'Gastrointestinal', strength: '10mg + 20mg', dosage_form: 'Tablet', sku: 'BD-MED-DP-PLUS', rack_location: 'B3-02', purchase_price: 5, mrp: 7, selling_price: 7, barcode: '8941100500158', batch_number: 'DPP2415', pieces_per_strip: 10, strips_per_box: 10, expiry_days: -10, expiry_alert_days: 30, low_stock_threshold: 30 },
-    { medicine_type: 'Tablet', name: 'Zimax 500', brand_name: 'Zimax', generic_name: 'Azithromycin', manufacturer: 'Square Pharmaceuticals', reason: 'Antibiotic', category: 'Antibiotic', strength: '500mg', dosage_form: 'Tablet', sku: 'BD-MED-ZIMAX-500', rack_location: 'AB1-01', purchase_price: 28, mrp: 35, selling_price: 35, barcode: '8941100500165', batch_number: 'ZX2416', pieces_per_strip: 3, strips_per_box: 10, expiry_days: 270, expiry_alert_days: 180, low_stock_threshold: 20 },
-    { medicine_type: 'Capsule', name: 'DPCL 500', brand_name: 'DPCL', generic_name: 'Flucloxacillin', manufacturer: 'Drug International', reason: 'Antibiotic', category: 'Antibiotic', strength: '500mg', dosage_form: 'Capsule', sku: 'BD-MED-DPCL-500', rack_location: 'AB1-02', purchase_price: 8, mrp: 12, selling_price: 12, barcode: '8941100500172', batch_number: 'DC2417', pieces_per_strip: 10, strips_per_box: 10, expiry_days: 100, expiry_alert_days: 90, low_stock_threshold: 25 },
-    { medicine_type: 'Tablet', name: 'Cef-3 200', brand_name: 'Cef-3', generic_name: 'Cefixime', manufacturer: 'Square Pharmaceuticals', reason: 'Antibiotic', category: 'Antibiotic', strength: '200mg', dosage_form: 'Tablet', sku: 'BD-MED-CEF3-200', rack_location: 'AB1-03', purchase_price: 28, mrp: 35, selling_price: 35, barcode: '8941100500189', batch_number: 'CF2418', pieces_per_strip: 6, strips_per_box: 10, expiry_days: 75, expiry_alert_days: 90, low_stock_threshold: 18 },
-    { medicine_type: 'Tablet', name: 'Fix-A 400', brand_name: 'Fix-A', generic_name: 'Cefixime', manufacturer: 'Acme Laboratories', reason: 'Antibiotic', category: 'Antibiotic', strength: '400mg', dosage_form: 'Tablet', sku: 'BD-MED-FIXA-400', rack_location: 'AB1-04', purchase_price: 42, mrp: 55, selling_price: 55, barcode: '8941100500196', batch_number: 'FA2419', pieces_per_strip: 6, strips_per_box: 10, expiry_days: 390, expiry_alert_days: 180, low_stock_threshold: 15 },
-    { medicine_type: 'Tablet', name: 'DP-Met 500', brand_name: 'DP-Met', generic_name: 'Metformin', manufacturer: 'Incepta Pharmaceuticals', reason: 'Diabetes management', category: 'Diabetes', strength: '500mg', dosage_form: 'Tablet', sku: 'BD-MED-DPMET-500', rack_location: 'DIA1-01', purchase_price: 3, mrp: 4, selling_price: 4, barcode: '8941100500202', batch_number: 'DM2420', pieces_per_strip: 10, strips_per_box: 20, expiry_days: 300, expiry_alert_days: 180, low_stock_threshold: 80 },
-    { medicine_type: 'Tablet', name: 'Comet 500', brand_name: 'Comet', generic_name: 'Metformin', manufacturer: 'Square Pharmaceuticals', reason: 'Diabetes management', category: 'Diabetes', strength: '500mg', dosage_form: 'Tablet', sku: 'BD-MED-COMET-500', rack_location: 'DIA1-02', purchase_price: 2.8, mrp: 4, selling_price: 4, barcode: '8941100500219', batch_number: 'CM2421', pieces_per_strip: 10, strips_per_box: 20, expiry_days: 170, expiry_alert_days: 90, low_stock_threshold: 80 },
-    { medicine_type: 'Tablet', name: 'Amdocal 5', brand_name: 'Amdocal', generic_name: 'Amlodipine', manufacturer: 'Beximco Pharmaceuticals', reason: 'Blood pressure management', category: 'Cardiovascular', strength: '5mg', dosage_form: 'Tablet', sku: 'BD-MED-AMDOCAL-5', rack_location: 'CV1-01', purchase_price: 3.5, mrp: 5, selling_price: 5, barcode: '8941100500226', batch_number: 'AD2422', pieces_per_strip: 10, strips_per_box: 20, expiry_days: 460, expiry_alert_days: 180, low_stock_threshold: 50 },
-    { medicine_type: 'Tablet', name: 'DP-Los 50', brand_name: 'DP-Los', generic_name: 'Losartan Potassium', manufacturer: 'Incepta Pharmaceuticals', reason: 'Blood pressure management', category: 'Cardiovascular', strength: '50mg', dosage_form: 'Tablet', sku: 'BD-MED-DPLOS-50', rack_location: 'CV1-02', purchase_price: 6, mrp: 8, selling_price: 8, barcode: '8941100500233', batch_number: 'DL2423', pieces_per_strip: 10, strips_per_box: 10, expiry_days: 95, expiry_alert_days: 90, low_stock_threshold: 45 },
-    { medicine_type: 'Tablet', name: 'Atova 10', brand_name: 'Atova', generic_name: 'Atorvastatin', manufacturer: 'Square Pharmaceuticals', reason: 'Cholesterol management', category: 'Cardiovascular', strength: '10mg', dosage_form: 'Tablet', sku: 'BD-MED-ATOVA-10', rack_location: 'CV1-03', purchase_price: 8, mrp: 10, selling_price: 10, barcode: '8941100500240', batch_number: 'AV2424', pieces_per_strip: 10, strips_per_box: 10, expiry_days: 600, expiry_alert_days: 180, low_stock_threshold: 40 },
-    { medicine_type: 'Cream', name: 'Fungidal Cream', brand_name: 'Fungidal', generic_name: 'Clotrimazole', manufacturer: 'Square Pharmaceuticals', reason: 'Fungal skin infection', category: 'Dermatology', strength: '1%', dosage_form: 'Cream', sku: 'BD-MED-FUNGIDAL-CRM', rack_location: 'DER1-01', purchase_price: 42, mrp: 60, selling_price: 60, barcode: '8941100500257', batch_number: 'FG2425', pieces_per_strip: 1, strips_per_box: 1, expiry_days: 35, expiry_alert_days: 90, low_stock_threshold: 10 },
-    { medicine_type: 'Ointment', name: 'Betameson-N Ointment', brand_name: 'Betameson-N', generic_name: 'Betamethasone + Neomycin', manufacturer: 'Acme Laboratories', reason: 'Skin inflammation', category: 'Dermatology', strength: '0.1% + 0.5%', dosage_form: 'Ointment', sku: 'BD-MED-BETN-OINT', rack_location: 'DER1-02', purchase_price: 38, mrp: 55, selling_price: 55, barcode: '8941100500264', batch_number: 'BN2426', pieces_per_strip: 1, strips_per_box: 1, expiry_days: 260, expiry_alert_days: 180, low_stock_threshold: 10 },
-    { medicine_type: 'Injection', name: 'DP-Panto IV', brand_name: 'DP-Panto', generic_name: 'Pantoprazole', manufacturer: 'Incepta Pharmaceuticals', reason: 'Acidity injection', category: 'Injection', strength: '40mg/vial', dosage_form: 'Injection', sku: 'BD-MED-DPPANTO-IV', rack_location: 'INJ1-01', purchase_price: 55, mrp: 75, selling_price: 75, barcode: '8941100500271', batch_number: 'PI2427', pieces_per_strip: 1, strips_per_box: 10, expiry_days: 110, expiry_alert_days: 90, low_stock_threshold: 20 },
-    { medicine_type: 'Eye Drop', name: 'DP-Mox Eye Drop', brand_name: 'DP-Mox', generic_name: 'Moxifloxacin', manufacturer: 'Incepta Pharmaceuticals', reason: 'Eye infection', category: 'Ophthalmic', strength: '0.5%', dosage_form: 'Eye Drop', sku: 'BD-MED-DPMOX-EYE', rack_location: 'EYE1-01', purchase_price: 65, mrp: 90, selling_price: 90, barcode: '8941100500288', batch_number: 'ME2428', pieces_per_strip: 1, strips_per_box: 1, expiry_days: 20, expiry_alert_days: 30, low_stock_threshold: 8 },
-    { medicine_type: 'Saline', name: 'ORS-N', brand_name: 'ORS-N', generic_name: 'Oral Rehydration Salts', manufacturer: 'Social Marketing Company', reason: 'Dehydration', category: 'ORS and Saline', strength: '13.95g sachet', dosage_form: 'Sachet', sku: 'BD-MED-ORS-N', rack_location: 'ORS1-01', purchase_price: 4, mrp: 6, selling_price: 6, barcode: '8941100500295', batch_number: 'OR2429', pieces_per_strip: 1, strips_per_box: 50, expiry_days: 730, expiry_alert_days: 180, low_stock_threshold: 150 },
-    { medicine_type: 'Tablet', name: 'Entacyd Plus', brand_name: 'Entacyd Plus', generic_name: 'Aluminium Hydroxide + Magnesium Hydroxide + Simethicone', manufacturer: 'Square Pharmaceuticals', reason: 'Acidity and gas', category: 'Gastrointestinal', strength: '400mg + 400mg + 30mg', dosage_form: 'Chewable Tablet', sku: 'BD-MED-ENTACYD-PLUS', rack_location: 'B3-03', purchase_price: 2.4, mrp: 3, selling_price: 3, barcode: '8941100500301', batch_number: 'EP2430', pieces_per_strip: 10, strips_per_box: 20, expiry_days: 55, expiry_alert_days: 90, low_stock_threshold: 70 },
+  const supplierSeeds = [
+    { name: 'Square Pharma Depot', phone: '01711111111', address: 'Tejgaon, Dhaka', balance_due: 8500 },
+    { name: 'Beximco Distribution', phone: '01822222222', address: 'Motijheel, Dhaka', balance_due: 5200 },
+    { name: 'Incepta Wholesale', phone: '01933333333', address: 'Uttara, Dhaka', balance_due: 0 },
+    { name: 'Renata Distribution Point', phone: '01644444444', address: 'Dhanmondi, Dhaka', balance_due: 3200 },
+    { name: 'Healthcare Pharma Supplier', phone: '01555555555', address: 'Banani, Dhaka', balance_due: 0 },
+    { name: 'SMC Distributor', phone: '01366666666', address: 'Mohakhali, Dhaka', balance_due: 1800 },
   ];
+  const suppliers = [];
+  for (const item of supplierSeeds) {
+    const supplier = await Supplier.findOneAndUpdate(
+      { business_id: businessId, name: item.name },
+      { $setOnInsert: { business_id: businessId, ...item, is_active: true } },
+      { upsert: true, new: true }
+    );
+    suppliers.push(supplier);
+  }
 
-  const meds = await Medicine.insertMany(medicineSeeds.map((m) => {
-    const piecesPerStrip = Math.max(Number(m.pieces_per_strip || 1), 1);
-    const stripsPerBox = Math.max(Number(m.strips_per_box || 1), 1);
-    return {
-      business_id: businessId,
-      medicine_type: m.medicine_type,
-      name: m.name,
-      brand_name: m.brand_name,
-      generic_name: m.generic_name,
-      manufacturer: m.manufacturer,
-      reason: m.reason,
-      category: m.category,
-      strength: m.strength,
-      dosage_form: m.dosage_form,
-      sku: m.sku,
-      rack_location: m.rack_location,
-      purchase_price: m.purchase_price,
-      mrp: m.mrp,
-      selling_price: m.selling_price,
-      price: m.selling_price,
-      cost: m.purchase_price,
-      box_price: Number((m.selling_price * piecesPerStrip * stripsPerBox).toFixed(2)),
-      strip_price: Number((m.selling_price * piecesPerStrip).toFixed(2)),
-      barcode: m.barcode,
-      batch_number: m.batch_number,
-      pieces_per_strip: piecesPerStrip,
-      strips_per_box: stripsPerBox,
-      low_stock_threshold: m.low_stock_threshold,
-      expiry_date: addDays(m.expiry_days),
-      expiry_alert_days: m.expiry_alert_days,
-      is_active: true,
-    };
-  }));
+  const existingSkus = new Set((await Medicine.find({ business_id: businessId, sku: { $in: medicineSeeds.map((m) => m.sku) } }).select('sku')).map((m) => m.sku));
+  const newMedicineRows = medicineSeeds
+    .filter((m) => !existingSkus.has(m.sku))
+    .map((m) => {
+      const piecesPerStrip = Math.max(Number(m.pieces_per_strip || 1), 1);
+      const stripsPerBox = Math.max(Number(m.strips_per_box || 1), 1);
+      const stripPrice = Number((Number(m.selling_price || 0) * piecesPerStrip).toFixed(2));
+      const boxPrice = Number((stripPrice * stripsPerBox).toFixed(2));
+      return {
+        business_id: businessId,
+        medicine_type: m.medicine_type,
+        name: m.name,
+        brand_name: m.brand_name,
+        generic_name: m.generic_name,
+        manufacturer: m.manufacturer,
+        reason: m.reason,
+        category: m.category,
+        strength: m.strength,
+        dosage_form: m.dosage_form,
+        sku: m.sku,
+        rack_location: m.rack_location,
+        purchase_price: m.purchase_price,
+        mrp: m.mrp,
+        selling_price: m.selling_price,
+        price: m.selling_price,
+        strip_price: stripPrice,
+        box_price: boxPrice,
+        cost: m.purchase_price,
+        barcode: m.barcode,
+        batch_number: m.batch_number,
+        pieces_per_strip: piecesPerStrip,
+        strips_per_box: stripsPerBox,
+        expiry_date: addDays(m.expiry_days),
+        expiry_alert_days: m.expiry_alert_days,
+        low_stock_threshold: m.low_stock_threshold,
+        is_active: true,
+      };
+    });
+
+  const meds = newMedicineRows.length ? await Medicine.insertMany(newMedicineRows) : [];
 
   const batchRows = [];
-  for (const med of meds) {
+  for (const [index, med] of meds.entries()) {
+    const original = medicineSeeds.find((m) => m.sku === med.sku) || {};
     const unitCost = Number(med.cost || med.purchase_price || 0);
-    batchRows.push({ business_id: businessId, branch_id: mainBranch._id, medicine_id: med._id, batch_number: `${med.batch_number}-A`, manufacturing_date: addDays(-220), expiry_date: med.expiry_date, quantity: med.name.includes('Syrup') ? 30 : 300, available_quantity: med.name.includes('Syrup') ? 25 : 240, unit_cost: unitCost, purchase_price: unitCost, rack_location: med.rack_location });
-    batchRows.push({ business_id: businessId, branch_id: secondBranch._id, medicine_id: med._id, batch_number: `${med.batch_number}-B`, manufacturing_date: addDays(-120), expiry_date: addDays(med.name.includes('Monas') ? 180 : 360), quantity: med.name.includes('Syrup') ? 20 : 160, available_quantity: med.name.includes('Syrup') ? 20 : 160, unit_cost: unitCost, purchase_price: unitCost, rack_location: med.rack_location });
+    const isSingleUnitPack = ['Syrup', 'Suspension', 'Drops', 'Inhaler', 'Cream', 'Injection'].includes(String(med.medicine_type));
+    const firstQty = isSingleUnitPack ? 24 + (index % 4) * 6 : 180 + (index % 5) * 40;
+    const secondQty = isSingleUnitPack ? 12 + (index % 3) * 4 : 80 + (index % 4) * 30;
+    batchRows.push({
+      business_id: businessId,
+      branch_id: mainBranch._id,
+      medicine_id: med._id,
+      batch_number: `${med.batch_number || original.batch_number}-A`,
+      manufacturing_date: addDays(-220 - (index % 5) * 20),
+      expiry_date: med.expiry_date,
+      quantity: firstQty,
+      available_quantity: firstQty,
+      unit_cost: unitCost,
+      purchase_price: unitCost,
+      rack_location: med.rack_location,
+      status: new Date(med.expiry_date).getTime() < Date.now() ? 'expired' : 'active',
+    });
+    batchRows.push({
+      business_id: businessId,
+      branch_id: secondBranch._id,
+      medicine_id: med._id,
+      batch_number: `${med.batch_number || original.batch_number}-B`,
+      manufacturing_date: addDays(-120 - (index % 4) * 15),
+      expiry_date: addDays(Math.max(Number(original.expiry_days || 365) + 180, 60)),
+      quantity: secondQty,
+      available_quantity: secondQty,
+      unit_cost: unitCost,
+      purchase_price: unitCost,
+      rack_location: med.rack_location,
+      status: 'active',
+    });
   }
-  const batches = await MedicineBatch.insertMany(batchRows);
+  const batches = batchRows.length ? await MedicineBatch.insertMany(batchRows) : [];
   for (const med of meds) await syncMedicineStock(med._id, businessId);
 
-  const purchase = await Purchase.create({ business_id: businessId, supplier_id: suppliers[0]._id, branch_id: mainBranch._id, invoice_no: 'PUR-MOCK-001', total: 24500, paid: 16000, due: 8500, status: 'partial', created_by: userId });
-  await PurchaseItem.insertMany(meds.slice(0, 3).map((m, i) => ({ business_id: businessId, purchase_id: purchase._id, medicine_id: m._id, batch_id: batches[i]._id, name: m.name, quantity: 100, unit_cost: Number(m.cost || 0), line_total: 100 * Number(m.cost || 0) })));
-  await StockMovement.insertMany(batches.map((b) => ({ business_id: businessId, branch_id: b.branch_id, medicine_id: b.medicine_id, batch_id: b._id, type: 'purchase', quantity_in: b.quantity, quantity_out: 0, balance_after: b.available_quantity, reference: 'Mock opening purchase', created_by: userId })));
+  if (batches.length) {
+    const purchaseTotal = batches.reduce((sum, b) => sum + Number(b.quantity || 0) * Number(b.unit_cost || 0), 0);
+    const paid = Number((purchaseTotal * 0.7).toFixed(2));
+    const purchase = await Purchase.create({ business_id: businessId, supplier_id: suppliers[0]._id, branch_id: mainBranch._id, invoice_no: `PUR-BD-MOCK-${Date.now().toString().slice(-6)}`, total: Number(purchaseTotal.toFixed(2)), paid, due: Number((purchaseTotal - paid).toFixed(2)), status: purchaseTotal - paid > 0 ? 'partial' : 'paid', created_by: userId });
+    await PurchaseItem.insertMany(batches.slice(0, 20).map((b) => {
+      const med = meds.find((m) => String(m._id) === String(b.medicine_id));
+      return { business_id: businessId, purchase_id: purchase._id, medicine_id: b.medicine_id, batch_id: b._id, name: med?.name || 'Medicine', quantity: b.quantity, unit_cost: Number(b.unit_cost || 0), line_total: Number((Number(b.quantity || 0) * Number(b.unit_cost || 0)).toFixed(2)) };
+    }));
+    await StockMovement.insertMany(batches.map((b) => ({ business_id: businessId, branch_id: b.branch_id, medicine_id: b.medicine_id, batch_id: b._id, type: 'purchase', quantity_in: b.quantity, quantity_out: 0, balance_after: b.available_quantity, reference: 'Bangladesh medicine mock opening stock', created_by: userId })));
+  }
 
-  const customers = await Customer.insertMany([
-    { business_id: businessId, name: 'Rahim Uddin', phone: '01744444444', address: 'Mohammadpur', due_balance: 420 },
-    { business_id: businessId, name: 'Nusrat Jahan', phone: '01855555555', address: 'Banani', due_balance: 0 },
-  ]);
-  await Prescription.create({ business_id: businessId, customer_id: customers[0]._id, doctor_name: 'Dr. Karim', notes: 'Paracetamol after meal, 3 days.' });
-  await CustomerDue.create({ business_id: businessId, customer_id: customers[0]._id, amount: 420, paid: 0, balance: 420, status: 'open' });
-  await Expense.create({ business_id: businessId, title: 'Pharmacy rent', category: 'Rent', amount: 18000, payment_method: 'cash', created_by: userId });
-  await CashRegister.create({ business_id: businessId, branch_id: mainBranch._id, cashier_id: userId, opening_cash: 5000, expected_cash: 5000, status: 'open' });
-  await RolePermission.insertMany([
-    { business_id: businessId, role: 'Owner', permissions: ['*'] },
-    { business_id: businessId, role: 'Cashier', permissions: ['pos.sale', 'customer.read', 'receipt.print'] },
-    { business_id: businessId, role: 'Inventory Manager', permissions: ['medicine.manage', 'purchase.manage', 'stock.adjust', 'report.inventory'] },
-  ]);
-  await audit({ business_id: businessId, user_id: userId, action: 'mock_data_seeded', resource: 'pharmacy', details: { medicines: meds.length, batches: batches.length } });
-  return { seeded: true, medicines: meds.length, batches: batches.length, suppliers: suppliers.length, customers: customers.length };
+  const customerSeeds = [
+    { name: 'Rahim Uddin', phone: '01744444444', address: 'Mohammadpur', due_balance: 420 },
+    { name: 'Nusrat Jahan', phone: '01855555555', address: 'Banani', due_balance: 0 },
+    { name: 'Farhana Akter', phone: '01977777777', address: 'Mirpur-10', due_balance: 260 },
+  ];
+  const customers = [];
+  for (const customer of customerSeeds) {
+    const row = await Customer.findOneAndUpdate(
+      { business_id: businessId, phone: customer.phone },
+      { $setOnInsert: { business_id: businessId, ...customer } },
+      { upsert: true, new: true }
+    );
+    customers.push(row);
+  }
+  if (customers[0]) {
+    await Prescription.findOneAndUpdate(
+      { business_id: businessId, customer_id: customers[0]._id, doctor_name: 'Dr. Karim' },
+      { $setOnInsert: { business_id: businessId, customer_id: customers[0]._id, doctor_name: 'Dr. Karim', notes: 'Demo prescription note: fever medicine after meal for 3 days.' } },
+      { upsert: true, new: true }
+    );
+    await CustomerDue.findOneAndUpdate(
+      { business_id: businessId, customer_id: customers[0]._id, amount: 420, status: 'open' },
+      { $setOnInsert: { business_id: businessId, customer_id: customers[0]._id, amount: 420, paid: 0, balance: 420, status: 'open' } },
+      { upsert: true, new: true }
+    );
+  }
+
+  await Expense.findOneAndUpdate(
+    { business_id: businessId, title: 'Pharmacy rent' },
+    { $setOnInsert: { business_id: businessId, title: 'Pharmacy rent', category: 'Rent', amount: 18000, payment_method: 'cash', created_by: userId } },
+    { upsert: true, new: true }
+  );
+  await CashRegister.findOneAndUpdate(
+    { business_id: businessId, branch_id: mainBranch._id, status: 'open' },
+    { $setOnInsert: { business_id: businessId, branch_id: mainBranch._id, cashier_id: userId, opening_cash: 5000, expected_cash: 5000, status: 'open' } },
+    { upsert: true, new: true }
+  );
+  const roleSeeds = [
+    { role: 'Owner', permissions: ['*'] },
+    { role: 'Cashier', permissions: ['pos.sale', 'customer.read', 'receipt.print'] },
+    { role: 'Inventory Manager', permissions: ['medicine.manage', 'purchase.manage', 'stock.adjust', 'report.inventory'] },
+  ];
+  for (const role of roleSeeds) {
+    await RolePermission.findOneAndUpdate(
+      { business_id: businessId, role: role.role },
+      { $set: { business_id: businessId, role: role.role, permissions: role.permissions } },
+      { upsert: true, new: true }
+    );
+  }
+
+  await audit({ business_id: businessId, user_id: userId, action: 'bangladesh_mock_medicines_seeded', resource: 'pharmacy', details: { inserted_medicines: meds.length, inserted_batches: batches.length, total_seed_catalog: medicineSeeds.length }, req: null });
+  return { seeded: meds.length > 0 || batches.length > 0, medicines: medicineSeeds.length, inserted_medicines: meds.length, batches: batches.length, suppliers: suppliers.length, customers: customers.length };
 }
 
 app.post('/api/pharmacy/mock-data', auth, async (req, res, next) => {

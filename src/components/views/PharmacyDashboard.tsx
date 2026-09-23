@@ -48,7 +48,7 @@ export default function PharmacyDashboard({ onNavigate }: { onNavigate?: (view: 
     setMessage(null);
     try {
       const res = await apiRequest<{ data: any }>('/pharmacy/mock-data', { method: 'POST', body: JSON.stringify({ reset: medicines.length === 0 ? false : false }) });
-      setMessage(res.data?.seeded ? 'Mock pharmacy data added successfully.' : 'Mock data already exists for this account.');
+      setMessage(res.data?.seeded ? `Bangladesh medicine mock data added: ${res.data.inserted_medicines || 0} medicines and ${res.data.batches || 0} batches.` : 'Bangladesh medicine mock data is already loaded for this account.');
       await load();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Failed to add mock data.');
@@ -66,7 +66,7 @@ export default function PharmacyDashboard({ onNavigate }: { onNavigate?: (view: 
         subtitle="Sales, profit, purchases, expiry alerts, stock valuation, and dues in one place."
         action={
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={seed} disabled={seeding}><Database className="h-4 w-4" /> {seeding ? 'Adding…' : 'Add mock data'}</Button>
+            <Button variant="outline" onClick={seed} disabled={seeding}><Database className="h-4 w-4" /> {seeding ? 'Adding…' : 'Add Bangladesh mock medicines'}</Button>
             <Button onClick={() => load()}><RefreshCcw className="h-4 w-4" /> Refresh</Button>
           </div>
         }
@@ -122,7 +122,7 @@ export default function PharmacyDashboard({ onNavigate }: { onNavigate?: (view: 
                   const med = medicines.find((m) => m.id === b.medicine_id);
                   return <tr key={b.id} className="border-b border-slate-100"><td className="py-2 font-semibold text-slate-800">{b.batch_number}</td><td>{med?.name || 'Medicine'}</td><td>{formatShortDate(b.expiry_date)}</td><td>{b.available_quantity}</td><td><ExpiryBadge expiry={b.expiry_date} /></td></tr>;
                 })}
-                {batches.length === 0 && <tr><td colSpan={5} className="py-8 text-center text-slate-500">No batch data yet. Add mock data or create medicine batches.</td></tr>}
+                {batches.length === 0 && <tr><td colSpan={5} className="py-8 text-center text-slate-500">No batch data yet. Add Bangladesh mock medicines or create medicine batches.</td></tr>}
               </tbody>
             </table>
           </div>
