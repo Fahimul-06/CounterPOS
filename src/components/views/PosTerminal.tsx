@@ -9,7 +9,6 @@ import {
   CreditCard,
   Banknote,
   Wallet,
-  QrCode,
   Loader2,
   CheckCircle2,
   PackageX,
@@ -49,12 +48,12 @@ function normalizeProduct(row: any, table: ProductTable): Product {
       id: m.id,
       business_id: m.business_id,
       name: m.name,
-      description: [m.generic_name, m.strength, m.dosage_form].filter(Boolean).join(' · ') || m.brand_name || null,
-      category: m.category || m.medicine_type,
-      price: Number(m.selling_price || m.price || m.mrp || 0),
-      cost: Number(m.purchase_price || m.cost || 0),
+      description: m.generic_name,
+      category: m.medicine_type,
+      price: m.price,
+      cost: m.cost,
       stock: m.pieces,
-      sku: m.barcode || m.sku,
+      sku: m.barcode,
       image_url: m.image_url ?? null,
       expiry_date: m.expiry_date ?? null,
       expiry_alert_days: m.expiry_alert_days ?? 30,
@@ -101,7 +100,7 @@ interface ReceiptLine {
   line_total: number;
 }
 
-type PaymentMethod = 'cash' | 'card' | 'bkash' | 'nagad' | 'bangla_qr' | 'due' | 'other';
+type PaymentMethod = 'cash' | 'card' | 'other';
 
 const RESTAURANT_TABLES = Array.from({ length: 20 }, (_, i) => String(i + 1));
 
@@ -133,7 +132,6 @@ export default function PosTerminal() {
   const currency = business?.currency ?? 'BDT';
   const taxRate = Number(business?.tax_rate ?? 0);
   const isRestaurant = business?.category === 'restaurant';
-  const isPharmacy = business?.category === 'pharmacy';
 
   // Pre-fill charge fields from business defaults when they become available
   useEffect(() => {
@@ -305,26 +303,6 @@ export default function PosTerminal() {
     setError(null);
     setSubmitting(true);
     try {
-      if (isPharmacy && status === 'completed') {
-        const { data, error: checkoutError } = await supabase.pharmacy.checkout({
-          items: cart.map((l) => ({ medicine_id: l.product.id, quantity: l.quantity, unit_price: Number(l.product.price) })),
-          payment_method: payment,
-          discount: totals.discountVal,
-          customer_name: customerName.trim() || null,
-          note: note.trim() || null,
-        });
-        if (checkoutError) throw checkoutError;
-        if (!data) throw new Error('Pharmacy checkout failed.');
-        setProducts((prev) => prev.map((p) => {
-          const line = cart.find((l) => l.product.id === p.id);
-          if (!line) return p;
-          return { ...p, stock: Math.max(0, p.stock - line.quantity) };
-        }));
-        setCompletedSale({ sale: data.sale, items: data.items as ReceiptLine[] });
-        clearCart();
-        return;
-      }
-
       const { data: saleData, error: saleError } = await supabase
         .from('sales')
         .insert({
@@ -422,7 +400,7 @@ export default function PosTerminal() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={isPharmacy ? 'Search medicine, barcode, generic, rack, or category…' : 'Search by name, SKU, or category…'}
+              placeholder="Search by name, SKU, or category…"
               className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-12 py-2.5 text-sm outline-none focus:border-brand-400 focus:bg-white focus:ring-2 focus:ring-brand-100 transition-all"
             />
             <button
@@ -453,7 +431,7 @@ export default function PosTerminal() {
                 {products.length === 0 ? 'No products yet' : 'No products match your search'}
               </p>
               <p className="mt-1 text-sm text-slate-500 max-w-sm">
-                {products.length === 0 ? (isPharmacy ? 'Add medicines and batches in Pharmacy Management to start selling.' : 'Add products in the Products tab to start selling.') : 'Try a different search or category.'}
+                {products.length === 0 ? 'Add products in the Products tab to start selling.' : 'Try a different search or category.'}
               </p>
             </div>
           ) : (
@@ -685,14 +663,10 @@ export default function PosTerminal() {
             </div>
           )}
 
-          <div className={classNames('mb-3 grid gap-2', isPharmacy ? 'grid-cols-3' : 'grid-cols-3')}>
+          <div className="mb-3 grid grid-cols-3 gap-2">
             <PaymentButton current={payment} value="cash" onClick={setPayment} icon={Banknote} label="Cash" />
             <PaymentButton current={payment} value="card" onClick={setPayment} icon={CreditCard} label="Card" />
-            {isPharmacy && <PaymentButton current={payment} value="bkash" onClick={setPayment} icon={Wallet} label="bKash" />}
-            {isPharmacy && <PaymentButton current={payment} value="nagad" onClick={setPayment} icon={Wallet} label="Nagad" />}
-            {isPharmacy && <PaymentButton current={payment} value="bangla_qr" onClick={setPayment} icon={QrCode} label="Bangla QR" />}
-            {isPharmacy && <PaymentButton current={payment} value="due" onClick={setPayment} icon={Receipt} label="Due" />}
-            {!isPharmacy && <PaymentButton current={payment} value="other" onClick={setPayment} icon={Wallet} label="Other" />}
+            <PaymentButton current={payment} value="other" onClick={setPayment} icon={Wallet} label="Other" />
           </div>
 
           <div className="space-y-1.5 mb-4 text-sm">

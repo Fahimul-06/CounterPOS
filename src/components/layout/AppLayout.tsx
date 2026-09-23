@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   ScanLine,
   Package,
+  PackageSearch,
   Receipt,
   Settings,
   LogOut,
@@ -10,18 +11,21 @@ import {
   Menu,
   X,
   ChevronDown,
-  Pill,
   Shirt,
   ChefHat,
   Table2,
   CreditCard,
   WalletCards,
+  Users,
+  Truck,
+  BarChart3,
+  ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { CATEGORY_META, classNames } from '../../lib/utils';
 import type { BusinessCategory } from '../../lib/supabase';
 
-export type View = 'dashboard' | 'pos' | 'tables' | 'products' | 'medicines' | 'dresses' | 'kitchen' | 'sales' | 'expenses' | 'settings' | 'subscription';
+export type View = 'dashboard' | 'pos' | 'tables' | 'products' | 'medicines' | 'pharmacy_inventory' | 'pharmacy_suppliers' | 'pharmacy_customers' | 'pharmacy_reports' | 'pharmacy_operations' | 'dresses' | 'kitchen' | 'sales' | 'expenses' | 'settings' | 'subscription';
 
 interface NavItem {
   id: View;
@@ -40,12 +44,19 @@ const BASE_NAV: NavItem[] = [
   { id: 'subscription', label: 'Subscription', icon: CreditCard, description: 'Trial, monthly & yearly plan' },
 ];
 
-const MEDICINES_NAV: NavItem = {
-  id: 'medicines',
-  label: 'Medicines',
-  icon: Pill,
-  description: 'Pharmacy inventory & expiry',
-};
+
+const PHARMACY_NAV: NavItem[] = [
+  { id: 'dashboard', label: 'Pharmacy Dashboard', icon: LayoutDashboard, description: 'Sales, profit, expiry & stock alerts' },
+  { id: 'pos', label: 'Fast Pharmacy POS', icon: ScanLine, description: 'Barcode, FEFO sale & thermal receipt' },
+  { id: 'pharmacy_inventory', label: 'Medicine Inventory', icon: PackageSearch, description: 'Medicines, batches & FEFO stock' },
+  { id: 'pharmacy_suppliers', label: 'Suppliers & Purchases', icon: Truck, description: 'Purchases, returns & supplier payments' },
+  { id: 'pharmacy_customers', label: 'Customers & Dues', icon: Users, description: 'Prescriptions, due sales & returns' },
+  { id: 'pharmacy_reports', label: 'Reports', icon: BarChart3, description: 'Sales, profit, stock & expiry reports' },
+  { id: 'pharmacy_operations', label: 'Operations', icon: ShieldCheck, description: 'Branches, cash register, roles & audit logs' },
+  { id: 'expenses', label: 'Expenses', icon: WalletCards, description: 'Daily & monthly costs' },
+  { id: 'settings', label: 'Settings', icon: Settings, description: 'Business profile' },
+  { id: 'subscription', label: 'Subscription', icon: CreditCard, description: 'Trial, monthly & yearly plan' },
+];
 
 const DRESSES_NAV: NavItem = {
   id: 'dresses',
@@ -71,15 +82,7 @@ const KITCHEN_NAV: NavItem = {
 
 function buildNav(category?: string): NavItem[] {
   if (category === 'pharmacy') {
-    return [
-      { id: 'dashboard', label: 'Pharmacy Dashboard', icon: LayoutDashboard, description: 'Sales, profit & expiry' },
-      { id: 'pos', label: 'Fast Pharmacy POS', icon: ScanLine, description: 'Barcode FEFO checkout' },
-      { ...MEDICINES_NAV, label: 'Pharmacy Management', description: 'Medicines, batches, suppliers & reports' },
-      { id: 'sales', label: 'Sales', icon: Receipt, description: 'Invoices & receipts' },
-      { id: 'expenses', label: 'Expenses', icon: WalletCards, description: 'Daily & monthly costs' },
-      { id: 'settings', label: 'Settings', icon: Settings, description: 'Business profile' },
-      { id: 'subscription', label: 'Subscription', icon: CreditCard, description: 'Trial, monthly & yearly plan' },
-    ];
+    return PHARMACY_NAV;
   }
   if (category === 'clothing') {
     const nav = [...BASE_NAV];

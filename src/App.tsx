@@ -4,7 +4,6 @@ import AppLayout, { type View } from './components/layout/AppLayout';
 import SignUp from './components/auth/SignUp';
 import SignIn from './components/auth/SignIn';
 import Dashboard from './components/views/Dashboard';
-import PharmacyDashboard from './components/views/PharmacyDashboard';
 import PosTerminal from './components/views/PosTerminal';
 import Products from './components/views/Products';
 import Medicines from './components/views/Medicines';
@@ -15,6 +14,13 @@ import Kitchen from './components/views/Kitchen';
 import Tables from './components/views/Tables';
 import Settings from './components/views/Settings';
 import Subscription from './components/views/Subscription';
+import PharmacyDashboard from './components/views/PharmacyDashboard';
+import PharmacyInventory from './components/views/PharmacyInventory';
+import PharmacyPOS from './components/views/PharmacyPOS';
+import PharmacySuppliers from './components/views/PharmacySuppliers';
+import PharmacyCustomers from './components/views/PharmacyCustomers';
+import PharmacyReports from './components/views/PharmacyReports';
+import PharmacyOperations from './components/views/PharmacyOperations';
 import { Spinner } from './components/ui/Shared';
 
 type AuthRoute = 'signup' | 'signin' | 'app';
@@ -95,19 +101,27 @@ function AuthedApp() {
     return <Subscription forcePayment />;
   }
 
+  const isPharmacy = business?.category === 'pharmacy';
+  const safeView = isPharmacy && ['products', 'medicines', 'dresses', 'tables', 'kitchen'].includes(view) ? 'pharmacy_inventory' : view;
+
   return (
-    <AppLayout current={view} onNavigate={setView}>
-      {view === 'dashboard' && (business?.category === 'pharmacy' ? <PharmacyDashboard onNavigate={setView} /> : <Dashboard onNavigate={setView} />)}
-      {view === 'pos' && <PosTerminal />}
-      {view === 'tables' && <Tables />}
-      {view === 'products' && <Products />}
-      {view === 'medicines' && <Medicines />}
-      {view === 'dresses' && <Dresses />}
-      {view === 'kitchen' && <Kitchen />}
-      {view === 'sales' && <Sales />}
-      {view === 'expenses' && <Expenses />}
-      {view === 'settings' && <Settings />}
-      {view === 'subscription' && <Subscription onBack={() => setView('dashboard')} />}
+    <AppLayout current={safeView as View} onNavigate={setView}>
+      {safeView === 'dashboard' && (isPharmacy ? <PharmacyDashboard onNavigate={setView} /> : <Dashboard onNavigate={setView} />)}
+      {safeView === 'pos' && (isPharmacy ? <PharmacyPOS /> : <PosTerminal />)}
+      {safeView === 'tables' && <Tables />}
+      {safeView === 'products' && !isPharmacy && <Products />}
+      {safeView === 'medicines' && !isPharmacy && <Medicines />}
+      {safeView === 'pharmacy_inventory' && <PharmacyInventory />}
+      {safeView === 'pharmacy_suppliers' && <PharmacySuppliers />}
+      {safeView === 'pharmacy_customers' && <PharmacyCustomers />}
+      {safeView === 'pharmacy_reports' && <PharmacyReports />}
+      {safeView === 'pharmacy_operations' && <PharmacyOperations />}
+      {safeView === 'dresses' && <Dresses />}
+      {safeView === 'kitchen' && <Kitchen />}
+      {safeView === 'sales' && <Sales />}
+      {safeView === 'expenses' && <Expenses />}
+      {safeView === 'settings' && <Settings />}
+      {safeView === 'subscription' && <Subscription onBack={() => setView('dashboard')} />}
     </AppLayout>
   );
 }
