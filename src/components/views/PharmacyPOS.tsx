@@ -59,6 +59,9 @@ export default function PharmacyPOS() {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [payment, setPayment] = useState<(typeof PAYMENT_METHODS)[number]>('cash');
   const [customerId, setCustomerId] = useState('');
+  const [useNewDueCustomer, setUseNewDueCustomer] = useState(false);
+  const [newCustomerName, setNewCustomerName] = useState('');
+  const [newCustomerPhone, setNewCustomerPhone] = useState('');
   const [branchId, setBranchId] = useState('');
   const [discount, setDiscount] = useState('0');
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -104,6 +107,7 @@ export default function PharmacyPOS() {
   const totalPieces = cart.reduce((s, l) => s + piecesFromUnits(l.medicine, l.quantity, l.unit), 0);
   const total = Math.max(subtotal - Number(discount || 0), 0);
   const selectedCustomer = customers.find((c) => c.id === customerId);
+  const dueCustomerReady = payment !== 'due' || Boolean(customerId) || (newCustomerName.trim().length > 1 && newCustomerPhone.trim().length >= 5);
 
   const setQty = (idx: number, q: number) => setCart((prev) => prev.map((l, i) => i === idx ? { ...l, quantity: Math.max(1, q || 1) } : l));
   const setUnit = (idx: number, unit: 'piece' | 'strip' | 'box') => setCart((prev) => prev.map((l, i) => i === idx ? { ...l, unit } : l));
@@ -117,20 +121,44 @@ export default function PharmacyPOS() {
 
   const charge = async () => {
     if (!cart.length) return setError('Cart is empty. Add at least one medicine before completing sale.');
+    if (payment === 'due' && !customerId && (!newCustomerName.trim() || !newCustomerPhone.trim())) {
+      return setError('For due sales, select an existing customer or add customer name and phone number.');
+    }
     setSaving(true); setError(null);
     try {
+      let saleCustomerId = customerId || null;
+      let saleCustomerName = selectedCustomer?.name || null;
+      let saleCustomerPhone = selectedCustomer?.phone || null;
+
+      if (payment === 'due' && !saleCustomerId) {
+        const created = await apiRequest<{ data: any }>('/data/customers', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: newCustomerName.trim(),
+            phone: newCustomerPhone.trim(),
+            due_balance: 0,
+            is_active: true,
+          }),
+        });
+        saleCustomerId = created.data?.id || null;
+        saleCustomerName = created.data?.name || newCustomerName.trim();
+        saleCustomerPhone = created.data?.phone || newCustomerPhone.trim();
+      }
+
       const payload = {
         branch_id: branchId || null,
-        customer_id: customerId || null,
-        customer_name: selectedCustomer?.name || null,
+        customer_id: saleCustomerId,
+        customer_name: saleCustomerName,
+        customer_phone: saleCustomerPhone,
         payment_method: payment,
         discount: Number(discount || 0),
+        paid_amount: payment === 'due' ? 0 : total,
         due_amount: payment === 'due' ? total : 0,
         items: cart.map((l) => ({ medicine_id: l.medicine.id, quantity: l.quantity, unit: l.unit })),
       };
       const res = await apiRequest<{ data: any }>('/pharmacy/pos/sale', { method: 'POST', body: JSON.stringify(payload) });
       setReceipt(res.data);
-      setCart([]); setDiscount('0'); setCustomerId('');
+      setCart([]); setDiscount('0'); setCustomerId(''); setUseNewDueCustomer(false); setNewCustomerName(''); setNewCustomerPhone('');
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sale failed.');
@@ -248,7 +276,7 @@ export default function PharmacyPOS() {
               </label>
               <label className="block">
                 <span className="mb-1 flex items-center gap-1.5 text-xs font-black uppercase tracking-wide text-slate-500"><UserRound className="h-3.5 w-3.5" /> Customer</span>
-                <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} className="form-control">
+                <select value={customerId} onChange={(e) => { setCustomerId(e.target.value); if (e.target.value) setUseNewDueCustomer(false); }} className="form-control">
                   <option value="">Walk-in customer</option>
                   {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
@@ -335,6 +363,48 @@ export default function PharmacyPOS() {
               })}
             </div>
 
+            {payment === 'due' && (
+              <div className="mb-4 rounded-3xl border border-amber-200 bg-amber-50/80 p-4 shadow-sm">
+                <div className="flex items-start gap-2">
+                  <Wallet className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                  <div>
+                    <p className="text-sm font-black text-amber-900">Due customer required</p>
+                    <p className="mt-0.5 text-xs font-semibold leading-5 text-amber-800">Choose an existing customer or add a new customer before completing the due sale.</p>
+                  </div>
+                </div>
+
+                {customerId ? (
+                  <div className="mt-3 rounded-2xl border border-amber-200 bg-white px-3 py-2">
+                    <p className="text-xs font-black uppercase tracking-wide text-slate-500">Selected customer</p>
+                    <p className="mt-1 text-sm font-black text-slate-950">{selectedCustomer?.name}</p>
+                    <p className="text-xs font-semibold text-slate-500">{selectedCustomer?.phone || 'No phone saved'} · Previous due {formatMoney(Number(selectedCustomer?.due_balance || 0), business?.currency || 'BDT')}</p>
+                  </div>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => setUseNewDueCustomer((v) => !v)}
+                      className="w-full rounded-2xl border border-amber-300 bg-white px-3 py-2 text-left text-xs font-black text-amber-800 transition hover:bg-amber-100"
+                    >
+                      {useNewDueCustomer ? 'Hide new customer form' : '+ Add new customer for due'}
+                    </button>
+                    {useNewDueCustomer && (
+                      <div className="grid gap-2">
+                        <label>
+                          <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">Customer name</span>
+                          <input value={newCustomerName} onChange={(e) => setNewCustomerName(e.target.value)} placeholder="Example: Md Rahim" className="form-control bg-white" />
+                        </label>
+                        <label>
+                          <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">Phone number</span>
+                          <input value={newCustomerPhone} onChange={(e) => setNewCustomerPhone(e.target.value)} placeholder="01XXXXXXXXX" className="form-control bg-white" />
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
               <div className="mb-3 grid grid-cols-1 gap-2">
                 <label className="flex-1">
@@ -350,7 +420,7 @@ export default function PharmacyPOS() {
               </div>
             </div>
 
-            <Button onClick={charge} disabled={saving || !cart.length} className="mt-4 w-full rounded-3xl py-4 text-base" size="lg">
+            <Button onClick={charge} disabled={saving || !cart.length || !dueCustomerReady} className="mt-4 w-full rounded-3xl py-4 text-base" size="lg">
               <Receipt className="h-4 w-4" /> {saving ? 'Processing sale…' : `Complete sale & receipt`}
             </Button>
           </div>
@@ -404,8 +474,8 @@ function ReceiptModal({
   const subtotal = Number(sale.subtotal || items.reduce((sum: number, item: any) => sum + Number(item.line_total || 0), 0));
   const discount = Number(sale.discount || 0);
   const total = Number(sale.total || Math.max(subtotal - discount, 0));
-  const paidAmount = sale.payment_method === 'due' ? 0 : total;
-  const dueAmount = sale.payment_method === 'due' ? total : 0;
+  const paidAmount = Number(sale.paid_amount ?? (sale.payment_method === 'due' ? 0 : total));
+  const dueAmount = Number(sale.due_amount ?? (sale.payment_method === 'due' ? total : 0));
 
   return (
     <Modal open={open} onClose={onClose} title="Professional pharmacy receipt" size="sm">
@@ -430,6 +500,7 @@ function ReceiptModal({
             <span>Date</span><span className="text-right font-medium text-slate-800">{formatDateTime(sale.created_at)}</span>
             <span>Payment</span><span className="text-right font-bold text-slate-900">{paymentLabel(sale.payment_method)}</span>
             {sale.customer_name && <><span>Customer</span><span className="text-right font-medium text-slate-800">{sale.customer_name}</span></>}
+            {sale.customer_phone && <><span>Phone</span><span className="text-right font-medium text-slate-800">{sale.customer_phone}</span></>}
             <span>Status</span><span className="text-right font-bold capitalize text-emerald-700">{sale.status || 'completed'}</span>
           </div>
 

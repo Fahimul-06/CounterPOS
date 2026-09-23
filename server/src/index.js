@@ -155,7 +155,11 @@ const Sale = mongoose.model('Sale', schema({
   status: { type: String, default: 'completed' },
   table_number: { type: String, default: null },
   order_type: { type: String, default: null },
+  customer_id: { type: mongoose.Schema.Types.ObjectId, default: null, index: true },
   customer_name: { type: String, default: null },
+  customer_phone: { type: String, default: null },
+  paid_amount: { type: Number, default: 0 },
+  due_amount: { type: Number, default: 0 },
   note: { type: String, default: null },
   service_area: { type: String, default: null },
   tax_zone: { type: String, default: null },
@@ -993,7 +997,14 @@ app.post('/api/pharmacy/pos/sale', auth, async (req, res, next) => {
     const customerId = req.body.customer_id || null;
     const branchId = req.body.branch_id || null;
     const customerName = String(req.body.customer_name || '').trim() || null;
+    const customerPhone = String(req.body.customer_phone || '').trim() || null;
+    if (paymentMethod === 'due' && !customerId) return res.status(400).json({ message: 'Due sale requires a customer. Select or add a customer first.' });
+    const dbCustomer = customerId ? await Customer.findOne({ _id: customerId, business_id: req.user.id }) : null;
+    if (paymentMethod === 'due' && !dbCustomer) return res.status(404).json({ message: 'Selected due customer was not found.' });
+    const saleCustomerName = customerName || dbCustomer?.name || null;
+    const saleCustomerPhone = customerPhone || dbCustomer?.phone || null;
     const dueAmount = paymentMethod === 'due' ? Math.max(Number(req.body.due_amount || 0), 0) : 0;
+    const paidAmount = paymentMethod === 'due' ? Math.max(Number(req.body.paid_amount || 0), 0) : 0;
     let subtotal = 0;
     const saleItems = [];
     const movements = [];
@@ -1026,13 +1037,29 @@ app.post('/api/pharmacy/pos/sale', auth, async (req, res, next) => {
     }
 
     const total = Math.max(subtotal - discount, 0);
-    const sale = await Sale.create({ business_id: req.user.id, subtotal, discount, total, payment_method: paymentMethod, status: paymentMethod === 'due' ? 'due' : 'completed', customer_name: customerName, note: req.body.note || null, created_by: req.user.id });
+    const finalPaidAmount = paymentMethod === 'due' ? Math.min(paidAmount, total) : total;
+    const finalDueAmount = paymentMethod === 'due' ? Math.max(dueAmount || (total - finalPaidAmount), 0) : 0;
+    const sale = await Sale.create({
+      business_id: req.user.id,
+      subtotal,
+      discount,
+      total,
+      payment_method: paymentMethod,
+      status: paymentMethod === 'due' ? 'due' : 'completed',
+      customer_id: customerId,
+      customer_name: saleCustomerName,
+      customer_phone: saleCustomerPhone,
+      paid_amount: finalPaidAmount,
+      due_amount: finalDueAmount,
+      note: req.body.note || null,
+      created_by: req.user.id,
+    });
     await SaleItem.insertMany(saleItems.map((x) => ({ ...x, sale_id: sale._id, business_id: req.user.id })));
     if (movements.length) await StockMovement.insertMany(movements.map((m) => ({ ...m, reference: `SALE-${sale._id}` })));
     if (paymentMethod === 'due' && customerId) {
-      const balance = dueAmount || total;
-      await CustomerDue.create({ business_id: req.user.id, customer_id: customerId, sale_id: sale._id, amount: total, paid: total - balance, balance, status: balance > 0 ? 'open' : 'paid' });
-      await Customer.findOneAndUpdate({ _id: customerId, business_id: req.user.id }, { $inc: { due_balance: balance } });
+      const balance = finalDueAmount;
+      await CustomerDue.create({ business_id: req.user.id, customer_id: customerId, sale_id: sale._id, amount: total, paid: finalPaidAmount, balance, status: balance > 0 ? 'open' : 'paid' });
+      await Customer.findOneAndUpdate({ _id: customerId, business_id: req.user.id }, { $inc: { due_balance: balance }, $set: { ...(saleCustomerPhone ? { phone: saleCustomerPhone } : {}) } });
     }
     await audit({ business_id: req.user.id, user_id: req.user.id, action: 'fefo_pos_sale', resource: 'sales', resource_id: sale._id, details: { total, payment_method: paymentMethod, items: saleItems.length }, req });
     const rows = await SaleItem.find({ sale_id: sale._id, business_id: req.user.id });
