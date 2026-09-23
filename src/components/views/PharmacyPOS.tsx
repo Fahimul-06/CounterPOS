@@ -141,7 +141,7 @@ export default function PharmacyPOS() {
 
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-transparent p-3 sm:p-4 lg:p-5">
-      <div className="mx-auto grid max-w-[1800px] grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_480px]">
+      <div className="mx-auto grid max-w-[1900px] grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_600px] 2xl:grid-cols-[minmax(0,1fr)_680px]">
         <section className="min-w-0 overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 shadow-soft backdrop-blur-xl">
           <div className="border-b border-slate-200/80 bg-white/70 p-4 sm:p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -224,7 +224,7 @@ export default function PharmacyPOS() {
           </div>
         </section>
 
-        <aside className="overflow-hidden rounded-[2rem] border border-white/80 bg-white shadow-soft-lg backdrop-blur-xl xl:sticky xl:top-20 xl:max-h-[calc(100vh-6rem)] flex flex-col">
+        <aside className="overflow-hidden rounded-[2rem] border border-white/80 bg-white shadow-soft-lg backdrop-blur-xl xl:sticky xl:top-20 xl:max-h-[calc(100vh-5.25rem)] flex flex-col">
           <div className="border-b border-slate-200/80 bg-slate-950 p-4 text-white">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -255,41 +255,76 @@ export default function PharmacyPOS() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto pos-scrollbar p-4">
+          <div className="flex-1 min-h-[360px] overflow-y-auto pos-scrollbar bg-gradient-to-b from-white to-slate-50/80 p-4 sm:p-5">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Selected medicines</p>
+                <p className="text-sm font-bold text-slate-600">{cart.length ? `${cart.length} item${cart.length > 1 ? 's' : ''} added to invoice` : 'No item selected yet'}</p>
+              </div>
+              {cart.length > 0 && (
+                <div className="rounded-2xl bg-emerald-50 px-3 py-2 text-right ring-1 ring-emerald-100">
+                  <p className="text-[10px] font-black uppercase tracking-wide text-emerald-600">Pieces</p>
+                  <p className="text-lg font-black text-emerald-700">{totalPieces}</p>
+                </div>
+              )}
+            </div>
+
             {cart.length === 0 ? (
-              <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
-                <PackageCheck className="mx-auto h-10 w-10 text-emerald-500" />
-                <p className="mt-3 font-black text-slate-950">Cart is empty</p>
-                <p className="mt-1 text-sm text-slate-500">Add medicine from the left or scan barcode.</p>
+              <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">
+                <PackageCheck className="mx-auto h-12 w-12 text-emerald-500" />
+                <p className="mt-3 text-lg font-black text-slate-950">Cart is empty</p>
+                <p className="mt-1 text-sm text-slate-500">Add medicine from the left or scan barcode. Selected items will appear here with quantity, unit and price.</p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {cart.map((l, idx) => {
                   const price = Number(l.medicine[l.unit === 'box' ? 'box_price' : l.unit === 'strip' ? 'strip_price' : 'price'] || l.medicine.selling_price || l.medicine.price || 0);
                   const pieces = piecesFromUnits(l.medicine, l.quantity, l.unit);
                   return (
-                    <div key={`${l.medicine.id}-${idx}`} className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="line-clamp-1 text-sm font-black text-slate-950">{l.medicine.name}</p>
-                          <p className="mt-0.5 text-xs text-slate-500">FEFO out: {pieces} pieces · {formatMoney(price, business?.currency || 'BDT')} / {l.unit}</p>
+                    <div key={`${l.medicine.id}-${idx}`} className="rounded-[1.65rem] border border-slate-200 bg-white p-4 shadow-sm ring-1 ring-white transition hover:border-emerald-200 hover:shadow-md">
+                      <div className="flex items-start gap-3">
+                        <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-2xl bg-emerald-50 ring-1 ring-emerald-100">
+                          {l.medicine.image_url ? <img src={l.medicine.image_url} className="h-full w-full object-cover" alt={l.medicine.name} /> : <FileText className="h-5 w-5 text-emerald-600" />}
                         </div>
-                        <button onClick={() => remove(idx)} className="grid h-8 w-8 shrink-0 place-items-center rounded-xl text-rose-500 hover:bg-rose-50" aria-label="Remove item">
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-base font-black leading-5 text-slate-950 line-clamp-2">{l.medicine.name}</p>
+                              <p className="mt-1 text-xs font-semibold text-slate-500 line-clamp-1">{l.medicine.generic_name || 'Generic not set'} · {l.medicine.strength || 'Strength N/A'} · Rack {l.medicine.rack_location || 'N/A'}</p>
+                            </div>
+                            <button onClick={() => remove(idx)} className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl text-rose-500 hover:bg-rose-50" aria-label="Remove item">
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-bold">
+                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600">FEFO: {pieces} pieces</span>
+                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600">Rate: {formatMoney(price, business?.currency || 'BDT')} / {l.unit}</span>
+                            {(l.medicine.barcode || l.medicine.sku) && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600">{l.medicine.barcode || l.medicine.sku}</span>}
+                          </div>
+                        </div>
                       </div>
-                      <div className="mt-3 grid grid-cols-[110px_minmax(0,1fr)_96px] gap-2">
-                        <select value={l.unit} onChange={(e) => setUnit(idx, e.target.value as any)} className="rounded-2xl border border-slate-200 bg-slate-50 px-2 py-2 text-sm font-bold outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-100">
-                          <option value="piece">Piece</option>
-                          <option value="strip">Strip</option>
-                          <option value="box">Box</option>
-                        </select>
-                        <div className="flex overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-                          <button onClick={() => setQty(idx, l.quantity - 1)} className="grid w-10 place-items-center hover:bg-white"><Minus className="h-4 w-4" /></button>
-                          <input value={l.quantity} onChange={(e) => setQty(idx, Number(e.target.value || 1))} className="w-full bg-transparent text-center text-sm font-black outline-none" />
-                          <button onClick={() => setQty(idx, l.quantity + 1)} className="grid w-10 place-items-center hover:bg-white"><Plus className="h-4 w-4" /></button>
+
+                      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[140px_minmax(0,1fr)_150px]">
+                        <label>
+                          <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-400">Unit</span>
+                          <select value={l.unit} onChange={(e) => setUnit(idx, e.target.value as any)} className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm font-bold outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-100">
+                            <option value="piece">Piece</option>
+                            <option value="strip">Strip</option>
+                            <option value="box">Box</option>
+                          </select>
+                        </label>
+                        <label>
+                          <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-400">Quantity</span>
+                          <div className="flex h-11 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                            <button onClick={() => setQty(idx, l.quantity - 1)} className="grid w-12 place-items-center hover:bg-white"><Minus className="h-4 w-4" /></button>
+                            <input value={l.quantity} onChange={(e) => setQty(idx, Number(e.target.value || 1))} className="w-full bg-transparent text-center text-base font-black outline-none" />
+                            <button onClick={() => setQty(idx, l.quantity + 1)} className="grid w-12 place-items-center hover:bg-white"><Plus className="h-4 w-4" /></button>
+                          </div>
+                        </label>
+                        <div>
+                          <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-400">Line total</span>
+                          <div className="flex h-11 items-center justify-end rounded-2xl bg-slate-950 px-4 text-base font-black text-white">{formatMoney(price * l.quantity, business?.currency || 'BDT')}</div>
                         </div>
-                        <div className="rounded-2xl bg-slate-950 px-3 py-2 text-right text-sm font-black text-white">{formatMoney(price * l.quantity, business?.currency || 'BDT')}</div>
                       </div>
                     </div>
                   );
