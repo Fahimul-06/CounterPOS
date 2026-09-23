@@ -131,12 +131,129 @@ export default function PharmacyPOS() {
         </div>
       </aside>
       <BarcodeScanner open={scannerOpen} onClose={() => setScannerOpen(false)} onDetected={scan} />
-      <ReceiptModal open={!!receipt} onClose={() => setReceipt(null)} data={receipt} currency={business?.currency || 'BDT'} />
+      <ReceiptModal open={!!receipt} onClose={() => setReceipt(null)} data={receipt} business={business} currency={business?.currency || 'BDT'} />
     </div>
   );
 }
 
-function ReceiptModal({ open, onClose, data, currency }: { open: boolean; onClose: () => void; data: any; currency: string }) {
+function paymentLabel(method?: string) {
+  const labels: Record<string, string> = {
+    cash: 'Cash',
+    card: 'Card',
+    bkash: 'bKash',
+    nagad: 'Nagad',
+    bangla_qr: 'Bangla QR',
+    due: 'Due',
+  };
+  return labels[String(method || '').toLowerCase()] || String(method || 'Cash');
+}
+
+function shortInvoice(id?: string) {
+  return id ? id.slice(-8).toUpperCase() : 'N/A';
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return new Date().toLocaleString();
+  return new Date(value).toLocaleString();
+}
+
+function ReceiptModal({
+  open,
+  onClose,
+  data,
+  business,
+  currency,
+}: {
+  open: boolean;
+  onClose: () => void;
+  data: any;
+  business: any;
+  currency: string;
+}) {
   if (!data) return null;
-  return <Modal open={open} onClose={onClose} title="Thermal invoice preview" size="sm"><div className="p-5"><div className="mx-auto max-w-xs border border-slate-200 p-4 text-sm"><div className="text-center border-b pb-3 mb-3"><h3 className="font-extrabold">Pharmacy Invoice</h3><p className="text-xs text-slate-500">#{data.sale?.id?.slice(-8).toUpperCase()}</p></div>{(data.items || []).map((i: any) => <div key={i.id} className="flex justify-between gap-3 py-1"><span>{i.name} × {i.quantity}</span><strong>{formatMoney(i.line_total, currency)}</strong></div>)}<div className="border-t mt-3 pt-3 flex justify-between text-base"><strong>Total</strong><strong>{formatMoney(data.sale?.total || 0, currency)}</strong></div><p className="mt-2 text-xs text-slate-500">Payment: {data.sale?.payment_method}</p></div><Button onClick={() => window.print()} className="mt-4 w-full"><Printer className="h-4 w-4" /> Print receipt</Button><Button variant="secondary" onClick={onClose} className="mt-2 w-full"><CheckCircle2 className="h-4 w-4" /> Done</Button></div></Modal>;
+  const sale = data.sale || {};
+  const items = data.items || [];
+  const subtotal = Number(sale.subtotal || items.reduce((sum: number, item: any) => sum + Number(item.line_total || 0), 0));
+  const discount = Number(sale.discount || 0);
+  const total = Number(sale.total || Math.max(subtotal - discount, 0));
+  const paidAmount = sale.payment_method === 'due' ? 0 : total;
+  const dueAmount = sale.payment_method === 'due' ? total : 0;
+
+  return (
+    <Modal open={open} onClose={onClose} title="Professional pharmacy receipt" size="sm">
+      <div className="p-4 bg-slate-50">
+        <div className="print-receipt mx-auto max-w-[360px] rounded-2xl border border-slate-200 bg-white p-5 text-sm shadow-sm print:shadow-none print:border-0">
+          <div className="text-center border-b border-dashed border-slate-300 pb-4">
+            {business?.logo_url ? (
+              <img src={business.logo_url} alt="Business logo" className="mx-auto mb-2 h-14 w-14 rounded-xl object-contain" />
+            ) : (
+              <div className="mx-auto mb-2 grid h-12 w-12 place-items-center rounded-xl bg-emerald-50 text-emerald-700">
+                <Receipt className="h-6 w-6" />
+              </div>
+            )}
+            <h2 className="text-lg font-extrabold uppercase tracking-wide text-slate-950">{business?.business_name || 'Pharmacy'}</h2>
+            {business?.address && <p className="mt-1 text-[11px] leading-4 text-slate-600">{business.address}</p>}
+            {business?.phone && <p className="text-[11px] text-slate-600">Phone: {business.phone}</p>}
+            <p className="mt-2 text-[11px] font-bold uppercase tracking-[0.22em] text-emerald-700">Sales Receipt</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 border-b border-dashed border-slate-300 py-3 text-[11px] text-slate-600">
+            <span>Invoice</span><span className="text-right font-mono font-bold text-slate-900">#{shortInvoice(sale.id)}</span>
+            <span>Date</span><span className="text-right font-medium text-slate-800">{formatDateTime(sale.created_at)}</span>
+            <span>Payment</span><span className="text-right font-bold text-slate-900">{paymentLabel(sale.payment_method)}</span>
+            {sale.customer_name && <><span>Customer</span><span className="text-right font-medium text-slate-800">{sale.customer_name}</span></>}
+            <span>Status</span><span className="text-right font-bold capitalize text-emerald-700">{sale.status || 'completed'}</span>
+          </div>
+
+          <div className="py-3">
+            <div className="grid grid-cols-[1fr_42px_74px] border-b border-slate-200 pb-1 text-[10px] font-extrabold uppercase tracking-wide text-slate-500">
+              <span>Medicine</span>
+              <span className="text-center">Qty</span>
+              <span className="text-right">Amount</span>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {items.map((item: any, index: number) => (
+                <div key={item.id || index} className="grid grid-cols-[1fr_42px_74px] gap-2 py-2 text-[12px]">
+                  <div className="min-w-0">
+                    <p className="font-bold leading-4 text-slate-900">{item.name}</p>
+                    <p className="text-[10px] text-slate-500">Rate: {formatMoney(Number(item.unit_price || 0), currency)}</p>
+                  </div>
+                  <span className="text-center font-semibold text-slate-700">{item.quantity}</span>
+                  <span className="text-right font-bold text-slate-900">{formatMoney(Number(item.line_total || 0), currency)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="border-t border-dashed border-slate-300 pt-3 text-[12px]">
+            <div className="flex justify-between py-0.5 text-slate-600"><span>Subtotal</span><span>{formatMoney(subtotal, currency)}</span></div>
+            {discount > 0 && <div className="flex justify-between py-0.5 text-emerald-700"><span>Discount</span><span>-{formatMoney(discount, currency)}</span></div>}
+            <div className="mt-2 flex justify-between border-t border-slate-200 pt-2 text-base font-extrabold text-slate-950">
+              <span>Total</span>
+              <span>{formatMoney(total, currency)}</span>
+            </div>
+            <div className="mt-1 flex justify-between text-slate-600"><span>Paid</span><span>{formatMoney(paidAmount, currency)}</span></div>
+            {dueAmount > 0 && <div className="flex justify-between font-bold text-rose-600"><span>Due</span><span>{formatMoney(dueAmount, currency)}</span></div>}
+          </div>
+
+          <div className="mt-4 border-t border-dashed border-slate-300 pt-3 text-center">
+            <p className="text-[11px] font-semibold text-slate-700">{business?.receipt_message || 'Thank you for your purchase.'}</p>
+            <p className="mt-1 text-[10px] text-slate-500">Goods once sold are not returnable without valid invoice.</p>
+            <p className="mt-2 text-[10px] text-slate-400">Powered by CounterPOS</p>
+          </div>
+        </div>
+
+        <div className="mt-4 flex gap-2 no-print">
+          <Button onClick={() => window.print()} className="flex-1">
+            <Printer className="h-4 w-4" />
+            Print receipt
+          </Button>
+          <Button variant="secondary" onClick={onClose} className="flex-1">
+            <CheckCircle2 className="h-4 w-4" />
+            Done
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
 }
