@@ -91,24 +91,242 @@ const Medicine = mongoose.model('Medicine', schema({
   business_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', index: true },
   medicine_type: String,
   name: String,
+  brand_name: { type: String, default: null },
   generic_name: { type: String, default: null },
   manufacturer: { type: String, default: null },
+  category: { type: String, default: null },
+  strength: { type: String, default: null },
+  dosage_form: { type: String, default: null },
+  pack_size: { type: String, default: null },
   reason: { type: String, default: null },
   batch_number: { type: String, default: null },
+  sku: { type: String, default: null },
+  rack_location: { type: String, default: null },
   boxes: { type: Number, default: 0 },
   strips: { type: Number, default: 0 },
   pieces: { type: Number, default: 0 },
-  pieces_per_strip: { type: Number, default: 0 },
-  strips_per_box: { type: Number, default: 0 },
+  pieces_per_strip: { type: Number, default: 10 },
+  strips_per_box: { type: Number, default: 10 },
   price: { type: Number, default: 0 },
   box_price: { type: Number, default: 0 },
   strip_price: { type: Number, default: 0 },
   cost: { type: Number, default: 0 },
+  purchase_price: { type: Number, default: 0 },
+  mrp: { type: Number, default: 0 },
+  selling_price: { type: Number, default: 0 },
+  low_stock_threshold: { type: Number, default: 10 },
   barcode: { type: String, default: null },
   image_url: { type: String, default: null },
   expiry_date: String,
   expiry_alert_days: { type: Number, default: 30 },
   is_active: { type: Boolean, default: true },
+}));
+
+
+const MedicineCatalog = mongoose.model('MedicineCatalog', schema({
+  code: { type: String, required: true, unique: true, index: true },
+  barcode: { type: String, default: null, index: true },
+  qr_code: { type: String, default: null, index: true },
+  name: { type: String, required: true },
+  brand_name: { type: String, default: null },
+  generic_name: { type: String, default: null },
+  manufacturer: { type: String, default: null },
+  category: { type: String, default: null },
+  strength: { type: String, default: null },
+  dosage_form: { type: String, default: null },
+  medicine_type: { type: String, default: 'Tablet' },
+  pack_size: { type: String, default: null },
+  pieces_per_strip: { type: Number, default: 10 },
+  strips_per_box: { type: Number, default: 10 },
+  mrp: { type: Number, default: 0 },
+  selling_price: { type: Number, default: 0 },
+  source: { type: String, default: 'business_entry' },
+}));
+
+const MedicineBatch = mongoose.model('MedicineBatch', schema({
+  business_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', index: true },
+  medicine_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Medicine', index: true },
+  batch_number: { type: String, required: true },
+  manufacturing_date: { type: String, default: null },
+  expiry_date: { type: String, required: true, index: true },
+  quantity: { type: Number, default: 0 },
+  cost: { type: Number, default: 0 },
+  purchase_price: { type: Number, default: 0 },
+  selling_price: { type: Number, default: 0 },
+  supplier_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier', default: null },
+  branch_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch', default: null },
+  status: { type: String, enum: ['active', 'sold_out', 'expired', 'damaged', 'returned'], default: 'active' },
+}));
+
+const Supplier = mongoose.model('Supplier', schema({
+  business_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', index: true },
+  name: { type: String, required: true },
+  phone: { type: String, default: null },
+  email: { type: String, default: null },
+  address: { type: String, default: null },
+  opening_due: { type: Number, default: 0 },
+  current_due: { type: Number, default: 0 },
+  is_active: { type: Boolean, default: true },
+}));
+
+const Purchase = mongoose.model('Purchase', schema({
+  business_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', index: true },
+  supplier_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier', default: null },
+  supplier_name: { type: String, default: null },
+  invoice_no: { type: String, default: null },
+  purchase_date: { type: String, default: null },
+  subtotal: { type: Number, default: 0 },
+  discount: { type: Number, default: 0 },
+  total: { type: Number, default: 0 },
+  paid: { type: Number, default: 0 },
+  due: { type: Number, default: 0 },
+  status: { type: String, enum: ['draft', 'received', 'cancelled'], default: 'received' },
+  note: { type: String, default: null },
+  created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+}));
+
+const PurchaseItem = mongoose.model('PurchaseItem', schema({
+  business_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', index: true },
+  purchase_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Purchase', index: true },
+  medicine_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Medicine', default: null },
+  medicine_name: { type: String, default: null },
+  batch_number: { type: String, default: null },
+  expiry_date: { type: String, default: null },
+  quantity: { type: Number, default: 0 },
+  unit_cost: { type: Number, default: 0 },
+  line_total: { type: Number, default: 0 },
+}));
+
+const SupplierPayment = mongoose.model('SupplierPayment', schema({
+  business_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', index: true },
+  supplier_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier', index: true },
+  amount: { type: Number, default: 0 },
+  payment_method: { type: String, default: 'cash' },
+  payment_date: { type: String, default: null },
+  note: { type: String, default: null },
+}));
+
+const PurchaseReturn = mongoose.model('PurchaseReturn', schema({
+  business_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', index: true },
+  purchase_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Purchase', default: null },
+  supplier_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier', default: null },
+  medicine_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Medicine', default: null },
+  quantity: { type: Number, default: 0 },
+  amount: { type: Number, default: 0 },
+  reason: { type: String, default: null },
+  return_date: { type: String, default: null },
+}));
+
+const Customer = mongoose.model('Customer', schema({
+  business_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', index: true },
+  name: { type: String, required: true },
+  phone: { type: String, default: null },
+  address: { type: String, default: null },
+  current_due: { type: Number, default: 0 },
+  notes: { type: String, default: null },
+}));
+
+const Prescription = mongoose.model('Prescription', schema({
+  business_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', index: true },
+  customer_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', default: null },
+  customer_name: { type: String, default: null },
+  doctor_name: { type: String, default: null },
+  prescription_date: { type: String, default: null },
+  image_url: { type: String, default: null },
+  notes: { type: String, default: null },
+}));
+
+const CustomerDue = mongoose.model('CustomerDue', schema({
+  business_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', index: true },
+  customer_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', index: true },
+  sale_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Sale', default: null },
+  amount: { type: Number, default: 0 },
+  paid: { type: Number, default: 0 },
+  due: { type: Number, default: 0 },
+  status: { type: String, enum: ['open', 'partial', 'paid'], default: 'open' },
+  note: { type: String, default: null },
+}));
+
+const SaleReturn = mongoose.model('SaleReturn', schema({
+  business_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', index: true },
+  sale_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Sale', default: null },
+  medicine_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Medicine', default: null },
+  quantity: { type: Number, default: 0 },
+  amount: { type: Number, default: 0 },
+  reason: { type: String, default: null },
+  return_date: { type: String, default: null },
+}));
+
+const StockMovement = mongoose.model('StockMovement', schema({
+  business_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', index: true },
+  medicine_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Medicine', index: true },
+  batch_id: { type: mongoose.Schema.Types.ObjectId, ref: 'MedicineBatch', default: null },
+  movement_type: { type: String, enum: ['purchase', 'sale', 'adjustment', 'damage', 'expiry', 'return_in', 'return_out', 'transfer_in', 'transfer_out'], default: 'adjustment' },
+  quantity: { type: Number, default: 0 },
+  before_quantity: { type: Number, default: 0 },
+  after_quantity: { type: Number, default: 0 },
+  reference: { type: String, default: null },
+  note: { type: String, default: null },
+  created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+}));
+
+const StockAdjustment = mongoose.model('StockAdjustment', schema({
+  business_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', index: true },
+  medicine_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Medicine', index: true },
+  batch_id: { type: mongoose.Schema.Types.ObjectId, ref: 'MedicineBatch', default: null },
+  adjustment_type: { type: String, enum: ['increase', 'decrease', 'damage', 'expired'], default: 'decrease' },
+  quantity: { type: Number, default: 0 },
+  reason: { type: String, default: null },
+  created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+}));
+
+const CashSession = mongoose.model('CashSession', schema({
+  business_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', index: true },
+  cashier_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  opened_at: { type: Date, default: Date.now },
+  closed_at: { type: Date, default: null },
+  opening_cash: { type: Number, default: 0 },
+  expected_cash: { type: Number, default: 0 },
+  counted_cash: { type: Number, default: 0 },
+  difference: { type: Number, default: 0 },
+  status: { type: String, enum: ['open', 'closed'], default: 'open' },
+  note: { type: String, default: null },
+}));
+
+const Branch = mongoose.model('Branch', schema({
+  business_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', index: true },
+  name: { type: String, required: true },
+  address: { type: String, default: null },
+  phone: { type: String, default: null },
+  is_active: { type: Boolean, default: true },
+}));
+
+const StockTransfer = mongoose.model('StockTransfer', schema({
+  business_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', index: true },
+  from_branch_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch', default: null },
+  to_branch_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch', default: null },
+  medicine_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Medicine', default: null },
+  batch_id: { type: mongoose.Schema.Types.ObjectId, ref: 'MedicineBatch', default: null },
+  quantity: { type: Number, default: 0 },
+  status: { type: String, enum: ['pending', 'sent', 'received', 'cancelled'], default: 'pending' },
+  note: { type: String, default: null },
+}));
+
+const RolePermission = mongoose.model('RolePermission', schema({
+  business_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', index: true },
+  role: { type: String, required: true },
+  permissions: { type: [String], default: [] },
+  is_active: { type: Boolean, default: true },
+}));
+
+const AuditLog = mongoose.model('AuditLog', schema({
+  business_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', index: true },
+  actor_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  actor_email: { type: String, default: null },
+  action: { type: String, required: true },
+  resource: { type: String, default: null },
+  resource_id: { type: String, default: null },
+  metadata: { type: mongoose.Schema.Types.Mixed, default: null },
 }));
 
 const Dress = mongoose.model('Dress', schema({
@@ -177,19 +395,46 @@ const PaymentTransaction = mongoose.model('PaymentTransaction', schema({
   business_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', index: true },
   tran_id: { type: String, required: true, unique: true, index: true },
   val_id: { type: String, default: null },
+  gateway: { type: String, enum: ['sslcommerz', 'bkash'], default: 'sslcommerz', index: true },
+  bkash_payment_id: { type: String, default: null, index: true },
+  bkash_transaction_id: { type: String, default: null },
   plan: { type: String, enum: ['monthly', 'yearly'], required: true },
   amount: { type: Number, required: true },
   currency: { type: String, default: 'BDT' },
   status: { type: String, enum: ['pending', 'paid', 'failed', 'cancelled'], default: 'pending' },
   gateway_response: { type: mongoose.Schema.Types.Mixed, default: null },
-  payment_method: { type: String, enum: ['sslcommerz', 'bkash_manual'], default: 'sslcommerz' },
-  bkash_merchant_number: { type: String, default: null },
-  customer_trx_id: { type: String, default: null },
   paid_at: { type: Date, default: null },
   created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }));
 
-const models = { businesses: Business, products: Product, medicines: Medicine, dresses: Dress, sales: Sale, sale_items: SaleItem, expenses: Expense, payment_transactions: PaymentTransaction };
+const models = {
+  businesses: Business,
+  products: Product,
+  medicines: Medicine,
+  medicine_batches: MedicineBatch,
+  medicine_catalog: MedicineCatalog,
+  suppliers: Supplier,
+  purchases: Purchase,
+  purchase_items: PurchaseItem,
+  supplier_payments: SupplierPayment,
+  purchase_returns: PurchaseReturn,
+  customers: Customer,
+  prescriptions: Prescription,
+  customer_dues: CustomerDue,
+  sale_returns: SaleReturn,
+  stock_movements: StockMovement,
+  stock_adjustments: StockAdjustment,
+  cash_sessions: CashSession,
+  branches: Branch,
+  stock_transfers: StockTransfer,
+  role_permissions: RolePermission,
+  audit_logs: AuditLog,
+  dresses: Dress,
+  sales: Sale,
+  sale_items: SaleItem,
+  expenses: Expense,
+  payment_transactions: PaymentTransaction,
+};
 
 function sign(user) {
   return jwt.sign({ id: String(user._id), email: user.email }, JWT_SECRET, { expiresIn: '7d' });
@@ -262,6 +507,77 @@ async function validateSslCommerzPayment(valId) {
   return response.json();
 }
 
+function bkashEndpoint(path) {
+  const explicitBase = process.env.BKASH_BASE_URL;
+  const live = String(process.env.BKASH_IS_LIVE || '').toLowerCase() === 'true';
+  const base = explicitBase || (live
+    ? 'https://tokenized.pay.bka.sh/v1.2.0-beta/tokenized/checkout'
+    : 'https://tokenized.sandbox.bka.sh/v1.2.0-beta/tokenized/checkout');
+  return `${base.replace(/\/$/, '')}${path}`;
+}
+
+function assertBkashConfigured() {
+  const required = ['BKASH_APP_KEY', 'BKASH_APP_SECRET', 'BKASH_USERNAME', 'BKASH_PASSWORD'];
+  const missing = required.filter((key) => !process.env[key]);
+  if (missing.length) {
+    const err = new Error(`bKash is not configured. Missing backend env variable(s): ${missing.join(', ')}.`);
+    err.status = 400;
+    throw err;
+  }
+}
+
+async function bkashGrantToken() {
+  assertBkashConfigured();
+  const response = await fetch(bkashEndpoint('/token/grant'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      username: process.env.BKASH_USERNAME,
+      password: process.env.BKASH_PASSWORD,
+    },
+    body: JSON.stringify({
+      app_key: process.env.BKASH_APP_KEY,
+      app_secret: process.env.BKASH_APP_SECRET,
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.id_token) {
+    const err = new Error(data.statusMessage || data.errorMessage || 'bKash token request failed.');
+    err.status = response.ok ? 502 : response.status;
+    err.gateway = data;
+    throw err;
+  }
+  return data.id_token;
+}
+
+async function bkashApi(path, token, payload) {
+  const response = await fetch(bkashEndpoint(path), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      Authorization: token,
+      'X-APP-Key': process.env.BKASH_APP_KEY,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const err = new Error(data.statusMessage || data.errorMessage || 'bKash API request failed.');
+    err.status = response.status;
+    err.gateway = data;
+    throw err;
+  }
+  return data;
+}
+
+function isBkashSuccess(payload) {
+  const statusCode = String(payload?.statusCode || '');
+  const transactionStatus = String(payload?.transactionStatus || '').toLowerCase();
+  return statusCode === '0000' && ['completed', 'success', 'paid'].includes(transactionStatus);
+}
+
 async function activateSubscription(transaction, gatewayResponse = {}) {
   if (!transaction || transaction.status === 'paid') return null;
   const config = getPlanConfig(transaction.plan);
@@ -282,6 +598,8 @@ async function activateSubscription(transaction, gatewayResponse = {}) {
   transaction.paid_at = now;
   transaction.gateway_response = gatewayResponse;
   if (gatewayResponse?.val_id) transaction.val_id = gatewayResponse.val_id;
+  if (gatewayResponse?.trxID) transaction.bkash_transaction_id = gatewayResponse.trxID;
+  if (gatewayResponse?.transactionId) transaction.bkash_transaction_id = gatewayResponse.transactionId;
   await transaction.save();
   return newEnd;
 }
@@ -423,9 +741,9 @@ app.post('/api/subscription/checkout', auth, async (req, res, next) => {
       plan,
       amount: config.amount,
       currency: 'BDT',
+      gateway: 'sslcommerz',
       status: 'pending',
       created_by: req.user.id,
-      payment_method: 'sslcommerz',
     });
     const base = apiBaseUrl(req);
     const payload = {
@@ -465,6 +783,94 @@ app.post('/api/subscription/checkout', auth, async (req, res, next) => {
     }
     res.json({ data: { checkout_url: gateway.GatewayPageURL, tran_id: tranId } });
   } catch (err) { next(err); }
+});
+
+app.post('/api/subscription/bkash/checkout', auth, async (req, res, next) => {
+  try {
+    const plan = String(req.body.plan || '').toLowerCase();
+    const config = getPlanConfig(plan);
+    if (!config) return res.status(400).json({ message: 'Select monthly or yearly plan.' });
+    assertBkashConfigured();
+    const business = await Business.findById(req.user.id);
+    if (!business) return res.status(404).json({ message: 'Business profile not found.' });
+
+    const tranId = `BKASH-SUB-${req.user.id}-${Date.now()}`;
+    const transaction = await PaymentTransaction.create({
+      business_id: req.user.id,
+      tran_id: tranId,
+      plan,
+      amount: config.amount,
+      currency: 'BDT',
+      gateway: 'bkash',
+      status: 'pending',
+      created_by: req.user.id,
+    });
+
+    const token = await bkashGrantToken();
+    const callbackUrl = `${apiBaseUrl(req)}/api/subscription/bkash/callback`;
+    const payload = {
+      mode: '0011',
+      payerReference: business.phone || req.user.email || String(req.user.id),
+      callbackURL: callbackUrl,
+      amount: String(config.amount),
+      currency: 'BDT',
+      intent: 'sale',
+      merchantInvoiceNumber: tranId,
+    };
+    const gateway = await bkashApi('/create', token, payload);
+    transaction.gateway_response = gateway;
+    transaction.bkash_payment_id = gateway.paymentID || gateway.paymentId || null;
+    await transaction.save();
+
+    const checkoutUrl = gateway.bkashURL || gateway.bKashURL || gateway.redirectURL || gateway.checkout_url;
+    if (!checkoutUrl) {
+      return res.status(502).json({ message: gateway.statusMessage || 'bKash did not return a checkout URL.', gateway });
+    }
+    res.json({ data: { checkout_url: checkoutUrl, tran_id: tranId, payment_id: transaction.bkash_payment_id } });
+  } catch (err) { next(err); }
+});
+
+async function handleBkashReturn(req, res) {
+  const paymentID = req.body.paymentID || req.query.paymentID || req.body.paymentId || req.query.paymentId;
+  const callbackStatus = String(req.body.status || req.query.status || '').toLowerCase();
+  if (!paymentID) return res.redirect(`${clientBaseUrl()}/?subscription=bkash_missing_payment`);
+
+  const transaction = await PaymentTransaction.findOne({ bkash_payment_id: paymentID, gateway: 'bkash' });
+  if (!transaction) return res.redirect(`${clientBaseUrl()}/?subscription=not_found`);
+
+  if (callbackStatus === 'cancel' || callbackStatus === 'cancelled') {
+    transaction.status = 'cancelled';
+    transaction.gateway_response = { ...transaction.gateway_response, callback: { ...req.query, ...req.body } };
+    await transaction.save();
+    return res.redirect(`${clientBaseUrl()}/?subscription=cancel`);
+  }
+  if (callbackStatus === 'failure' || callbackStatus === 'failed') {
+    transaction.status = 'failed';
+    transaction.gateway_response = { ...transaction.gateway_response, callback: { ...req.query, ...req.body } };
+    await transaction.save();
+    return res.redirect(`${clientBaseUrl()}/?subscription=fail`);
+  }
+
+  const token = await bkashGrantToken();
+  const executed = await bkashApi('/execute', token, { paymentID });
+  const amountOk = !executed?.amount || Number(executed.amount) === Number(transaction.amount);
+
+  if (isBkashSuccess(executed) && amountOk) {
+    await activateSubscription(transaction, { ...executed, callback: { ...req.query, ...req.body } });
+    return res.redirect(`${clientBaseUrl()}/?subscription=success`);
+  }
+
+  transaction.status = 'failed';
+  transaction.gateway_response = { ...transaction.gateway_response, executed, callback: { ...req.query, ...req.body } };
+  await transaction.save();
+  return res.redirect(`${clientBaseUrl()}/?subscription=validation_failed`);
+}
+
+app.get('/api/subscription/bkash/callback', async (req, res, next) => {
+  try { await handleBkashReturn(req, res); } catch (err) { next(err); }
+});
+app.post('/api/subscription/bkash/callback', async (req, res, next) => {
+  try { await handleBkashReturn(req, res); } catch (err) { next(err); }
 });
 
 async function handlePaymentReturn(req, res, returnStatus) {
@@ -525,61 +931,280 @@ app.post('/api/subscription/ipn', async (req, res, next) => {
 });
 
 
-app.post('/api/subscription/bkash-payment', auth, async (req, res, next) => {
+function medicineDisplayPrice(medicine) {
+  return Number(medicine.selling_price || medicine.price || medicine.mrp || 0);
+}
+
+async function recalcMedicineStock(medicineId, businessId) {
+  const batches = await MedicineBatch.find({ medicine_id: medicineId, business_id: businessId, status: { $ne: 'damaged' } });
+  const totalPieces = batches.reduce((sum, b) => sum + Math.max(0, Number(b.quantity || 0)), 0);
+  await Medicine.findOneAndUpdate({ _id: medicineId, business_id: businessId }, { pieces: totalPieces, updated_at: new Date() });
+  return totalPieces;
+}
+
+
+function normalizeScanCode(code) {
+  return String(code || '').trim();
+}
+
+function getFirstDefined(obj, keys) {
+  for (const key of keys) {
+    const value = obj?.[key];
+    if (value !== undefined && value !== null && String(value).trim() !== '') return value;
+  }
+  return null;
+}
+
+function parseMedicinePayloadFromCode(code) {
+  const raw = normalizeScanCode(code);
+  if (!raw) return null;
+  let parsed = null;
   try {
-    const plan = String(req.body.plan || '').toLowerCase();
-    const config = getPlanConfig(plan);
-    if (!config) return res.status(400).json({ message: 'Select monthly or yearly plan.' });
+    const maybeJson = raw.startsWith('{') ? raw : raw.includes('{') ? raw.slice(raw.indexOf('{')) : '';
+    if (maybeJson) parsed = JSON.parse(maybeJson);
+  } catch (_err) {
+    parsed = null;
+  }
+  if (!parsed) {
+    try {
+      const url = new URL(raw);
+      parsed = Object.fromEntries(url.searchParams.entries());
+    } catch (_err) {
+      parsed = null;
+    }
+  }
+  if (!parsed && raw.includes('|')) {
+    const parts = raw.split('|').map((v) => v.trim());
+    parsed = { name: parts[0], generic_name: parts[1], strength: parts[2], manufacturer: parts[3], pack_size: parts[4], barcode: parts[5] || raw };
+  }
+  if (!parsed) return null;
+  const medicine = {
+    barcode: String(getFirstDefined(parsed, ['barcode', 'bar_code', 'code', 'gtin', 'ean']) || raw),
+    qr_code: raw,
+    name: getFirstDefined(parsed, ['name', 'product_name', 'medicine_name', 'brand', 'brand_name']),
+    brand_name: getFirstDefined(parsed, ['brand_name', 'brand']),
+    generic_name: getFirstDefined(parsed, ['generic_name', 'generic', 'genericName']),
+    manufacturer: getFirstDefined(parsed, ['manufacturer', 'company', 'manufacturer_company', 'manufacturerName']),
+    category: getFirstDefined(parsed, ['category']),
+    strength: getFirstDefined(parsed, ['strength', 'dose', 'dosage_strength']),
+    dosage_form: getFirstDefined(parsed, ['dosage_form', 'dosageForm', 'form']),
+    medicine_type: getFirstDefined(parsed, ['medicine_type', 'type', 'dosage_form', 'form']) || 'Tablet',
+    pack_size: getFirstDefined(parsed, ['pack_size', 'packSize', 'package_size', 'pack']),
+    pieces_per_strip: Number(getFirstDefined(parsed, ['pieces_per_strip', 'piecesPerStrip', 'unit_per_strip']) || 10),
+    strips_per_box: Number(getFirstDefined(parsed, ['strips_per_box', 'stripsPerBox', 'strip_per_box']) || 10),
+    mrp: Number(getFirstDefined(parsed, ['mrp', 'maximum_retail_price']) || 0),
+    selling_price: Number(getFirstDefined(parsed, ['selling_price', 'price']) || 0),
+  };
+  if (!medicine.name && medicine.generic_name) medicine.name = medicine.generic_name;
+  if (!medicine.name && medicine.manufacturer) medicine.name = `${medicine.manufacturer} medicine`;
+  return medicine.name || medicine.generic_name || medicine.manufacturer ? medicine : null;
+}
+
+async function upsertMedicineCatalogFromMedicine(medicine) {
+  const code = normalizeScanCode(medicine.barcode || medicine.sku);
+  if (!code || !medicine.name) return;
+  await MedicineCatalog.findOneAndUpdate(
+    { code },
+    {
+      code,
+      barcode: medicine.barcode || code,
+      name: medicine.name,
+      brand_name: medicine.brand_name || null,
+      generic_name: medicine.generic_name || null,
+      manufacturer: medicine.manufacturer || null,
+      category: medicine.category || null,
+      strength: medicine.strength || null,
+      dosage_form: medicine.dosage_form || null,
+      medicine_type: medicine.medicine_type || medicine.dosage_form || 'Tablet',
+      pack_size: medicine.pack_size || null,
+      pieces_per_strip: Number(medicine.pieces_per_strip || 10),
+      strips_per_box: Number(medicine.strips_per_box || 10),
+      mrp: Number(medicine.mrp || 0),
+      selling_price: Number(medicine.selling_price || medicine.price || 0),
+      source: 'business_entry',
+    },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+}
+
+app.get('/api/pharmacy/lookup-code', auth, async (req, res, next) => {
+  try {
     const business = await Business.findById(req.user.id);
-    if (!business) return res.status(404).json({ message: 'Business profile not found.' });
-    const merchantNumber = String(process.env.BKASH_MERCHANT_NUMBER || '01409472939').trim();
-    const tranId = `BKASH-SUB-${req.user.id}-${Date.now()}`;
-    const transaction = await PaymentTransaction.create({
-      business_id: req.user.id,
-      tran_id: tranId,
-      plan,
-      amount: config.amount,
-      currency: 'BDT',
-      status: 'pending',
-      payment_method: 'bkash_manual',
-      bkash_merchant_number: merchantNumber,
-      created_by: req.user.id,
-      gateway_response: {
-        instruction: 'Manual bKash Merchant payment. Customer must pay the amount to the merchant number and submit the bKash TrxID.',
-      },
-    });
-    res.json({
-      data: {
-        tran_id: tranId,
-        plan,
-        amount: config.amount,
-        currency: 'BDT',
-        merchant_number: merchantNumber,
-        reference: tranId,
-        instruction: `Send ৳${config.amount} to bKash Merchant number ${merchantNumber}. Use ${tranId} as reference if bKash asks for a reference, then submit your bKash TrxID here.`,
-        transaction: clean(transaction),
-      },
-    });
+    if (!business || business.category !== 'pharmacy') return res.status(403).json({ message: 'Medicine barcode lookup is only available for pharmacy accounts.' });
+    const code = normalizeScanCode(req.query.code);
+    if (!code) return res.status(400).json({ message: 'Barcode or QR code is required.' });
+
+    const existing = await Medicine.findOne({ business_id: req.user.id, $or: [{ barcode: code }, { sku: code }] });
+    if (existing) return res.json({ data: { found: true, source: 'business_medicine', medicine: clean(existing) } });
+
+    const catalog = await MedicineCatalog.findOne({ $or: [{ code }, { barcode: code }, { qr_code: code }] });
+    if (catalog) return res.json({ data: { found: true, source: 'medicine_catalog', medicine: clean(catalog) } });
+
+    const parsed = parseMedicinePayloadFromCode(code);
+    if (parsed) {
+      const saved = await MedicineCatalog.findOneAndUpdate(
+        { code: parsed.barcode || code },
+        { ...parsed, code: parsed.barcode || code },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+      return res.json({ data: { found: true, source: 'qr_payload', medicine: clean(saved) } });
+    }
+
+    res.json({ data: { found: false, source: null, medicine: null } });
   } catch (err) { next(err); }
 });
 
-app.post('/api/subscription/bkash-confirm', auth, async (req, res, next) => {
+app.post('/api/pharmacy/checkout', auth, async (req, res, next) => {
   try {
-    const tranId = String(req.body.tran_id || '').trim();
-    const customerTrxId = String(req.body.customer_trx_id || '').trim();
-    if (!tranId || !customerTrxId) return res.status(400).json({ message: 'Subscription reference and bKash TrxID are required.' });
-    const transaction = await PaymentTransaction.findOne({ tran_id: tranId, business_id: req.user.id, payment_method: 'bkash_manual' });
-    if (!transaction) return res.status(404).json({ message: 'bKash payment request not found.' });
-    if (transaction.status === 'paid') return res.json({ data: { subscription_ends_at: await Business.findById(req.user.id).then(b => b?.subscription_ends_at), transaction: clean(transaction) } });
-    transaction.customer_trx_id = customerTrxId;
-    await activateSubscription(transaction, {
-      payment_method: 'bkash_manual',
-      merchant_number: transaction.bkash_merchant_number,
-      customer_trx_id: customerTrxId,
-      note: 'Manual bKash payment confirmation submitted by customer. Verify the TrxID in the merchant bKash account for accounting accuracy.',
-    });
     const business = await Business.findById(req.user.id);
-    res.json({ data: { message: 'bKash payment submitted. Subscription is active now.', subscription: businessSubscriptionInfo(business), business: clean(business), transaction: clean(transaction) } });
+    if (!business || business.category !== 'pharmacy') return res.status(403).json({ message: 'Pharmacy checkout is only available for pharmacy accounts.' });
+
+    const items = Array.isArray(req.body.items) ? req.body.items : [];
+    if (!items.length) return res.status(400).json({ message: 'Cart is empty.' });
+
+    const paymentMethod = String(req.body.payment_method || 'cash');
+    const allowed = ['cash', 'card', 'bkash', 'nagad', 'bangla_qr', 'due', 'other'];
+    if (!allowed.includes(paymentMethod)) return res.status(400).json({ message: 'Invalid payment method.' });
+
+    const discount = Math.max(0, Number(req.body.discount || 0));
+    const customerName = req.body.customer_name || null;
+    const customerId = req.body.customer_id || null;
+    const note = req.body.note || null;
+
+    let subtotal = 0;
+    const checkoutLines = [];
+    for (const raw of items) {
+      const medicineId = raw.medicine_id || raw.product_id;
+      const quantity = Math.max(1, Number(raw.quantity || 0));
+      const medicine = await Medicine.findOne({ _id: medicineId, business_id: req.user.id, is_active: true });
+      if (!medicine) return res.status(404).json({ message: `Medicine not found: ${medicineId}` });
+      const currentStock = await recalcMedicineStock(medicine._id, req.user.id);
+      if (currentStock < quantity) return res.status(400).json({ message: `${medicine.name} has only ${currentStock} piece(s) available.` });
+      const unitPrice = Number(raw.unit_price ?? medicineDisplayPrice(medicine));
+      subtotal += unitPrice * quantity;
+      checkoutLines.push({ medicine, quantity, unitPrice });
+    }
+
+    const discountVal = Math.min(discount, subtotal);
+    const total = subtotal - discountVal;
+    const sale = await Sale.create({
+      business_id: req.user.id,
+      subtotal,
+      discount: discountVal,
+      total,
+      payment_method: paymentMethod,
+      status: 'completed',
+      customer_name: customerName,
+      note,
+      created_by: req.user.id,
+    });
+
+    const saleItems = [];
+    for (const line of checkoutLines) {
+      let remaining = line.quantity;
+      const batches = await MedicineBatch.find({
+        business_id: req.user.id,
+        medicine_id: line.medicine._id,
+        quantity: { $gt: 0 },
+        status: 'active',
+      }).sort({ expiry_date: 1, created_at: 1 });
+
+      for (const batch of batches) {
+        if (remaining <= 0) break;
+        const used = Math.min(remaining, Number(batch.quantity || 0));
+        const before = Number(batch.quantity || 0);
+        batch.quantity = before - used;
+        if (batch.quantity <= 0) batch.status = 'sold_out';
+        await batch.save();
+        remaining -= used;
+        await StockMovement.create({
+          business_id: req.user.id,
+          medicine_id: line.medicine._id,
+          batch_id: batch._id,
+          movement_type: 'sale',
+          quantity: -used,
+          before_quantity: before,
+          after_quantity: batch.quantity,
+          reference: String(sale._id),
+          note: `FEFO sale from batch ${batch.batch_number}`,
+          created_by: req.user.id,
+        });
+      }
+      if (remaining > 0) throw new Error(`Could not allocate enough FEFO stock for ${line.medicine.name}.`);
+      await recalcMedicineStock(line.medicine._id, req.user.id);
+      saleItems.push(await SaleItem.create({
+        sale_id: sale._id,
+        business_id: req.user.id,
+        product_id: line.medicine._id,
+        name: line.medicine.name,
+        unit_price: line.unitPrice,
+        quantity: line.quantity,
+        line_total: line.unitPrice * line.quantity,
+      }));
+    }
+
+    if (paymentMethod === 'due') {
+      let customer = null;
+      if (customerId) customer = await Customer.findOne({ _id: customerId, business_id: req.user.id });
+      if (!customer && customerName) customer = await Customer.create({ business_id: req.user.id, name: customerName, current_due: 0 });
+      if (customer) {
+        customer.current_due = Number(customer.current_due || 0) + total;
+        await customer.save();
+        await CustomerDue.create({ business_id: req.user.id, customer_id: customer._id, sale_id: sale._id, amount: total, due: total, status: 'open' });
+      }
+    }
+
+    await AuditLog.create({ business_id: req.user.id, actor_id: req.user.id, actor_email: req.user.email, action: 'pharmacy_sale_completed', resource: 'sales', resource_id: String(sale._id), metadata: { payment_method: paymentMethod, total } });
+    res.status(201).json({ data: { sale: clean(sale), items: saleItems.map(clean) } });
+  } catch (err) { next(err); }
+});
+
+app.post('/api/pharmacy/receive-purchase', auth, async (req, res, next) => {
+  try {
+    const business = await Business.findById(req.user.id);
+    if (!business || business.category !== 'pharmacy') return res.status(403).json({ message: 'Only pharmacy accounts can receive medicine purchases.' });
+    const items = Array.isArray(req.body.items) ? req.body.items : [];
+    const subtotal = items.reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.unit_cost || 0), 0);
+    const discount = Number(req.body.discount || 0);
+    const paid = Number(req.body.paid || 0);
+    const total = Math.max(0, subtotal - discount);
+    const due = Math.max(0, total - paid);
+    const purchase = await Purchase.create({
+      business_id: req.user.id,
+      supplier_id: req.body.supplier_id || null,
+      supplier_name: req.body.supplier_name || null,
+      invoice_no: req.body.invoice_no || null,
+      purchase_date: req.body.purchase_date || new Date().toISOString().slice(0, 10),
+      subtotal, discount, total, paid, due,
+      status: 'received',
+      note: req.body.note || null,
+      created_by: req.user.id,
+    });
+    const purchaseItems = [];
+    for (const item of items) {
+      const med = await Medicine.findOne({ _id: item.medicine_id, business_id: req.user.id });
+      if (!med) continue;
+      const qty = Math.max(0, Number(item.quantity || 0));
+      const batch = await MedicineBatch.create({
+        business_id: req.user.id,
+        medicine_id: med._id,
+        batch_number: item.batch_number || `B-${Date.now()}`,
+        manufacturing_date: item.manufacturing_date || null,
+        expiry_date: item.expiry_date,
+        quantity: qty,
+        cost: Number(item.unit_cost || 0),
+        purchase_price: Number(item.unit_cost || 0),
+        selling_price: Number(item.selling_price || med.selling_price || med.price || 0),
+        supplier_id: req.body.supplier_id || null,
+        branch_id: item.branch_id || null,
+      });
+      purchaseItems.push(await PurchaseItem.create({ business_id: req.user.id, purchase_id: purchase._id, medicine_id: med._id, medicine_name: med.name, batch_number: batch.batch_number, expiry_date: batch.expiry_date, quantity: qty, unit_cost: batch.cost, line_total: qty * batch.cost }));
+      await StockMovement.create({ business_id: req.user.id, medicine_id: med._id, batch_id: batch._id, movement_type: 'purchase', quantity: qty, before_quantity: 0, after_quantity: qty, reference: String(purchase._id), note: 'Purchase received', created_by: req.user.id });
+      await recalcMedicineStock(med._id, req.user.id);
+    }
+    if (req.body.supplier_id && due > 0) await Supplier.findOneAndUpdate({ _id: req.body.supplier_id, business_id: req.user.id }, { $inc: { current_due: due } });
+    await AuditLog.create({ business_id: req.user.id, actor_id: req.user.id, actor_email: req.user.email, action: 'purchase_received', resource: 'purchases', resource_id: String(purchase._id), metadata: { total, due } });
+    res.status(201).json({ data: { purchase: clean(purchase), items: purchaseItems.map(clean) } });
   } catch (err) { next(err); }
 });
 
@@ -614,6 +1239,9 @@ app.post('/api/data/:table', auth, async (req, res, next) => {
     const makePayload = (item) => req.params.table === 'businesses' ? item : withBusiness(item, req.user.id);
     const input = Array.isArray(req.body) ? req.body : [req.body];
     const docs = await Model.insertMany(input.map(makePayload), { ordered: true });
+    if (req.params.table === 'medicines') {
+      await Promise.all(docs.map((doc) => upsertMedicineCatalogFromMedicine(doc).catch(() => null)));
+    }
     res.status(201).json({ data: Array.isArray(req.body) ? docs.map(clean) : clean(docs[0]) });
   } catch (err) { next(err); }
 });
@@ -626,6 +1254,9 @@ app.patch('/api/data/:table', auth, async (req, res, next) => {
     if (req.query.id) q._id = req.query.id;
     await Model.updateMany(q, req.body, { runValidators: false });
     const docs = await Model.find(q).sort({ updated_at: -1 });
+    if (req.params.table === 'medicines') {
+      await Promise.all(docs.map((doc) => upsertMedicineCatalogFromMedicine(doc).catch(() => null)));
+    }
     const rows = docs.map(clean);
     res.json({ data: req.query.single === 'true' ? (rows[0] || null) : rows });
   } catch (err) { next(err); }

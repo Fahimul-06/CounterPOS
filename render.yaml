@@ -14,6 +14,28 @@ services:
         sync: false
       - key: CLIENT_URL
         sync: false
+      - key: API_PUBLIC_URL
+        sync: false
+      - key: SUBSCRIPTION_MONTHLY_PRICE
+        value: 999
+      - key: SUBSCRIPTION_YEARLY_PRICE
+        value: 9999
+      - key: SSLCOMMERZ_STORE_ID
+        sync: false
+      - key: SSLCOMMERZ_STORE_PASSWORD
+        sync: false
+      - key: SSLCOMMERZ_IS_LIVE
+        value: false
+      - key: BKASH_APP_KEY
+        sync: false
+      - key: BKASH_APP_SECRET
+        sync: false
+      - key: BKASH_USERNAME
+        sync: false
+      - key: BKASH_PASSWORD
+        sync: false
+      - key: BKASH_IS_LIVE
+        value: false
 
   - type: static
     name: counterpos-frontend

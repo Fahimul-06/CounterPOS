@@ -102,10 +102,17 @@ export interface Medicine {
   business_id: string;
   medicine_type: string;
   name: string;
+  brand_name: string | null;
   generic_name: string | null;
   manufacturer: string | null;
+  category: string | null;
+  strength: string | null;
+  dosage_form: string | null;
+  pack_size: string | null;
   reason: string | null;
   batch_number: string | null;
+  sku: string | null;
+  rack_location: string | null;
   boxes: number;
   strips: number;
   pieces: number;
@@ -115,6 +122,10 @@ export interface Medicine {
   box_price: number;
   strip_price: number;
   cost: number;
+  purchase_price: number;
+  mrp: number;
+  selling_price: number;
+  low_stock_threshold: number;
   barcode: string | null;
   image_url: string | null;
   expiry_date: string;
@@ -122,6 +133,94 @@ export interface Medicine {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface MedicineBatch {
+  id: string;
+  business_id: string;
+  medicine_id: string;
+  batch_number: string;
+  manufacturing_date: string | null;
+  expiry_date: string;
+  quantity: number;
+  cost: number;
+  purchase_price: number;
+  selling_price: number;
+  supplier_id: string | null;
+  branch_id: string | null;
+  status: 'active' | 'sold_out' | 'expired' | 'damaged' | 'returned';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Supplier {
+  id: string;
+  business_id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  opening_due: number;
+  current_due: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Purchase {
+  id: string;
+  business_id: string;
+  supplier_id: string | null;
+  supplier_name: string | null;
+  invoice_no: string | null;
+  purchase_date: string | null;
+  subtotal: number;
+  discount: number;
+  total: number;
+  paid: number;
+  due: number;
+  status: string;
+  note: string | null;
+  created_at: string;
+}
+
+export interface Customer {
+  id: string;
+  business_id: string;
+  name: string;
+  phone: string | null;
+  address: string | null;
+  current_due: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StockMovement {
+  id: string;
+  business_id: string;
+  medicine_id: string;
+  batch_id: string | null;
+  movement_type: string;
+  quantity: number;
+  before_quantity: number;
+  after_quantity: number;
+  reference: string | null;
+  note: string | null;
+  created_at: string;
+}
+
+export interface CashSession {
+  id: string;
+  business_id: string;
+  opening_cash: number;
+  expected_cash: number;
+  counted_cash: number;
+  difference: number;
+  status: 'open' | 'closed';
+  opened_at: string;
+  closed_at: string | null;
+  note: string | null;
 }
 
 export interface Dress {
@@ -339,37 +438,56 @@ export const supabase = {
         return { data: null, error: err instanceof Error ? err : new Error('Failed to load subscription') };
       }
     },
-    async checkout(plan: 'monthly' | 'yearly') {
+    async checkout(plan: 'monthly' | 'yearly', gateway: 'sslcommerz' | 'bkash' = 'sslcommerz') {
       try {
-        const res = await apiRequest<{ data: { checkout_url: string; tran_id: string } }>('/subscription/checkout', {
+        const endpoint = gateway === 'bkash' ? '/subscription/bkash/checkout' : '/subscription/checkout';
+        const res = await apiRequest<{ data: { checkout_url: string; tran_id: string; payment_id?: string } }>(endpoint, {
           method: 'POST',
           body: JSON.stringify({ plan }),
         });
         return { data: res.data, error: null };
       } catch (err) {
-        return { data: null, error: err instanceof Error ? err : new Error('Failed to start checkout') };
+        return { data: null, error: err instanceof Error ? err : new Error(`Failed to start ${gateway} checkout`) };
       }
     },
-    async bkashPayment(plan: 'monthly' | 'yearly') {
+  },
+  pharmacy: {
+
+    async lookupCode(code: string) {
       try {
-        const res = await apiRequest<{ data: any }>('/subscription/bkash-payment', {
+        const res = await apiRequest<{ data: { found: boolean; source: string | null; medicine: Partial<Medicine> | null } }>(`/pharmacy/lookup-code?code=${encodeURIComponent(code)}`);
+        return { data: res.data, error: null };
+      } catch (err) {
+        return { data: null, error: err instanceof Error ? err : new Error('Medicine lookup failed') };
+      }
+    },
+    async checkout(payload: {
+      items: { medicine_id: string; quantity: number; unit_price?: number }[];
+      payment_method: string;
+      discount?: number;
+      customer_name?: string | null;
+      customer_id?: string | null;
+      note?: string | null;
+    }) {
+      try {
+        const res = await apiRequest<{ data: { sale: Sale; items: SaleItem[] } }>('/pharmacy/checkout', {
           method: 'POST',
-          body: JSON.stringify({ plan }),
+          body: JSON.stringify(payload),
         });
         return { data: res.data, error: null };
       } catch (err) {
-        return { data: null, error: err instanceof Error ? err : new Error('Failed to start bKash payment') };
+        return { data: null, error: err instanceof Error ? err : new Error('Pharmacy checkout failed') };
       }
     },
-    async confirmBkashPayment({ tran_id, customer_trx_id }: { tran_id: string; customer_trx_id: string }) {
+    async receivePurchase(payload: Record<string, any>) {
       try {
-        const res = await apiRequest<{ data: any }>('/subscription/bkash-confirm', {
+        const res = await apiRequest<{ data: any }>('/pharmacy/receive-purchase', {
           method: 'POST',
-          body: JSON.stringify({ tran_id, customer_trx_id }),
+          body: JSON.stringify(payload),
         });
         return { data: res.data, error: null };
       } catch (err) {
-        return { data: null, error: err instanceof Error ? err : new Error('Failed to confirm bKash payment') };
+        return { data: null, error: err instanceof Error ? err : new Error('Purchase receive failed') };
       }
     },
   },

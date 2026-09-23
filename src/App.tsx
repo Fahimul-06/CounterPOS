@@ -4,6 +4,7 @@ import AppLayout, { type View } from './components/layout/AppLayout';
 import SignUp from './components/auth/SignUp';
 import SignIn from './components/auth/SignIn';
 import Dashboard from './components/views/Dashboard';
+import PharmacyDashboard from './components/views/PharmacyDashboard';
 import PosTerminal from './components/views/PosTerminal';
 import Products from './components/views/Products';
 import Medicines from './components/views/Medicines';
@@ -96,7 +97,7 @@ function AuthedApp() {
 
   return (
     <AppLayout current={view} onNavigate={setView}>
-      {view === 'dashboard' && <Dashboard onNavigate={setView} />}
+      {view === 'dashboard' && (business?.category === 'pharmacy' ? <PharmacyDashboard onNavigate={setView} /> : <Dashboard onNavigate={setView} />)}
       {view === 'pos' && <PosTerminal />}
       {view === 'tables' && <Tables />}
       {view === 'products' && <Products />}

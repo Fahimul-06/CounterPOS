@@ -71,9 +71,15 @@ const KITCHEN_NAV: NavItem = {
 
 function buildNav(category?: string): NavItem[] {
   if (category === 'pharmacy') {
-    const nav = [...BASE_NAV];
-    nav.splice(3, 0, MEDICINES_NAV);
-    return nav;
+    return [
+      { id: 'dashboard', label: 'Pharmacy Dashboard', icon: LayoutDashboard, description: 'Sales, profit & expiry' },
+      { id: 'pos', label: 'Fast Pharmacy POS', icon: ScanLine, description: 'Barcode FEFO checkout' },
+      { ...MEDICINES_NAV, label: 'Pharmacy Management', description: 'Medicines, batches, suppliers & reports' },
+      { id: 'sales', label: 'Sales', icon: Receipt, description: 'Invoices & receipts' },
+      { id: 'expenses', label: 'Expenses', icon: WalletCards, description: 'Daily & monthly costs' },
+      { id: 'settings', label: 'Settings', icon: Settings, description: 'Business profile' },
+      { id: 'subscription', label: 'Subscription', icon: CreditCard, description: 'Trial, monthly & yearly plan' },
+    ];
   }
   if (category === 'clothing') {
     const nav = [...BASE_NAV];
