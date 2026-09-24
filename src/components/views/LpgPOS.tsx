@@ -176,16 +176,139 @@ export default function LpgPOS() {
 
   const printReceipt = () => {
     if (!completed || !business) return;
-    const w = window.open('', '_blank', 'width=420,height=680');
-    if (!w) return;
     const lines = completed.lpg_items || [];
-    w.document.write(`<!doctype html><html><head><title>LPG Receipt</title><style>
-      @page{size:80mm auto;margin:4mm} body{font-family:Arial, sans-serif;color:#111827;margin:0;font-size:12px}.receipt{width:72mm;margin:auto}.center{text-align:center}.shop{font-size:18px;font-weight:800}.muted{color:#64748b}.hr{border-top:1px dashed #94a3b8;margin:8px 0}.row{display:flex;justify-content:space-between;gap:8px}.total{font-size:16px;font-weight:900}.item{margin:7px 0}.badge{display:inline-block;border:1px solid #111827;border-radius:999px;padding:2px 8px;font-size:10px;font-weight:800}table{width:100%;border-collapse:collapse}td{vertical-align:top;padding:2px 0}</style></head><body><div class="receipt">
-      <div class="center"><div class="shop">${escapeHtml(business.business_name || 'LPG Shop')}</div><div class="muted">${escapeHtml(business.address || '')}</div><div>${escapeHtml(business.phone || '')}</div><div style="margin-top:4px"><span class="badge">LPG SALE RECEIPT</span></div></div>
-      <div class="hr"></div><div class="row"><span>Invoice</span><b>#${completed.sale.id.slice(-8).toUpperCase()}</b></div><div class="row"><span>Date</span><span>${formatDate(completed.sale.created_at)}</span></div><div class="row"><span>Payment</span><b>${completed.sale.payment_method}</b></div>${completed.sale.customer_name ? `<div class="row"><span>Customer</span><b>${escapeHtml(completed.sale.customer_name)}</b></div>` : ''}${completed.sale.customer_phone ? `<div class="row"><span>Phone</span><span>${escapeHtml(completed.sale.customer_phone)}</span></div>` : ''}${completed.sale.customer_address ? `<div class="row"><span>Address</span><span>${escapeHtml(completed.sale.customer_address)}</span></div>` : ''}
-      <div class="hr"></div>
-      ${lines.map((x) => `<div class="item"><b>${escapeHtml(x.sold_company)} ${escapeHtml(x.sold_size)} ${x.sold_item_type}</b><div class="row"><span>Sold: ${x.sold_quantity} x ${formatMoney(x.unit_price, currency)}</span><b>${formatMoney(x.line_total, currency)}</b></div><div class="muted">Empty received: ${x.empty_return_quantity} ${escapeHtml(x.empty_return_company || '-')} ${escapeHtml(x.empty_return_size || '')}</div></div>`).join('')}
-      <div class="hr"></div><div class="row"><span>Subtotal</span><b>${formatMoney(completed.sale.subtotal, currency)}</b></div><div class="row"><span>Discount</span><b>${formatMoney(completed.sale.discount, currency)}</b></div><div class="row total"><span>Total</span><span>${formatMoney(completed.sale.total, currency)}</span></div><div class="row"><span>Paid</span><b>${formatMoney(Number(completed.sale.paid_amount || 0), currency)}</b></div><div class="row"><span>Due</span><b>${formatMoney(Number(completed.sale.due_amount || 0), currency)}</b></div><div class="hr"></div><div class="center muted">${escapeHtml(business.receipt_message || 'Thank you. Please check cylinder seal and weight before leaving.')}</div></div><script>window.onload=function(){setTimeout(function(){window.print();},200)}</script></body></html>`);
+    const invoice = `#${completed.sale.id.slice(-8).toUpperCase()}`;
+    const paymentLabel = String(completed.sale.payment_method || '').replace('_', ' ').toUpperCase();
+    const customerBlock = completed.sale.customer_name || completed.sale.customer_phone || completed.sale.customer_address
+      ? `<section class="info-card"><h3>Customer information</h3>
+          ${completed.sale.customer_name ? `<div class="row"><span>Name</span><b>${escapeHtml(completed.sale.customer_name)}</b></div>` : ''}
+          ${completed.sale.customer_phone ? `<div class="row"><span>Phone</span><b>${escapeHtml(completed.sale.customer_phone)}</b></div>` : ''}
+          ${completed.sale.customer_address ? `<div class="row"><span>Address</span><b>${escapeHtml(completed.sale.customer_address)}</b></div>` : ''}
+        </section>`
+      : '';
+
+    const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LPG Receipt ${invoice}</title>
+  <style>
+    @page { size: A4 portrait; margin: 12mm; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: #f1f5f9; color: #0f172a; font-family: Arial, Helvetica, sans-serif; }
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .sheet { width: 190mm; max-width: 100%; min-height: 270mm; margin: 16px auto; background: #ffffff; border-radius: 18px; padding: 18mm; box-shadow: 0 20px 50px rgba(15, 23, 42, .12); }
+    .top { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; border-bottom: 3px solid #f59e0b; padding-bottom: 18px; }
+    .brand { display: flex; gap: 14px; align-items: center; }
+    .logo { height: 56px; width: 56px; border-radius: 18px; background: linear-gradient(135deg, #f59e0b, #dc2626); color: #fff; display: grid; place-items: center; font-size: 26px; font-weight: 900; }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: 24px; line-height: 1.15; }
+    .muted { color: #64748b; font-size: 12px; line-height: 1.5; }
+    .badge { display: inline-block; border-radius: 999px; padding: 7px 12px; background: #fffbeb; color: #92400e; border: 1px solid #fde68a; font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em; }
+    .invoice-box { text-align: right; min-width: 210px; }
+    .invoice-box .no { font-size: 22px; font-weight: 900; margin-top: 8px; }
+    .meta { margin-top: 18px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .meta-card, .info-card { border: 1px solid #e2e8f0; border-radius: 16px; padding: 12px; background: #f8fafc; }
+    .meta-card span, .row span { color: #64748b; font-size: 12px; }
+    .meta-card b { display: block; margin-top: 5px; font-size: 13px; }
+    .info-card { margin-top: 14px; background: #fff7ed; border-color: #fed7aa; }
+    .info-card h3 { font-size: 13px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .04em; color: #9a3412; }
+    .row { display: flex; justify-content: space-between; gap: 18px; padding: 5px 0; }
+    .row b { text-align: right; }
+    table { width: 100%; border-collapse: collapse; margin-top: 18px; font-size: 12px; }
+    thead th { background: #111827; color: #fff; padding: 10px 8px; text-align: left; }
+    tbody td { padding: 10px 8px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+    tbody tr { break-inside: avoid; page-break-inside: avoid; }
+    .right { text-align: right; }
+    .empty-return { color: #b45309; font-weight: 700; font-size: 11px; margin-top: 4px; }
+    .totals { margin-left: auto; margin-top: 18px; width: 330px; border: 1px solid #e2e8f0; border-radius: 16px; padding: 12px; background: #f8fafc; }
+    .totals .row { border-bottom: 1px dashed #cbd5e1; }
+    .totals .row:last-child { border-bottom: 0; }
+    .grand { margin-top: 8px; padding-top: 10px; border-top: 2px solid #111827 !important; font-size: 19px; font-weight: 900; color: #111827; }
+    .due { color: #dc2626; }
+    .footer { margin-top: 22px; border-top: 1px dashed #cbd5e1; padding-top: 14px; text-align: center; color: #64748b; font-size: 12px; }
+    .actions { width: 190mm; max-width: 100%; margin: 0 auto 16px; display: flex; justify-content: flex-end; gap: 8px; }
+    button { border: 0; border-radius: 12px; padding: 10px 14px; font-weight: 800; cursor: pointer; }
+    .print { background: #111827; color: white; }
+    .close { background: #e2e8f0; color: #0f172a; }
+    @media print {
+      html, body { background: #fff; }
+      .actions { display: none !important; }
+      .sheet { width: auto; min-height: auto; margin: 0; padding: 0; border-radius: 0; box-shadow: none; }
+      .top, .meta-card, .info-card, .totals, table { break-inside: avoid; page-break-inside: avoid; }
+    }
+    @media (max-width: 760px) {
+      .sheet { padding: 18px; margin: 0; border-radius: 0; }
+      .top { flex-direction: column; }
+      .invoice-box { text-align: left; }
+      .meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .totals { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="actions"><button class="close" onclick="window.close()">Close</button><button class="print" onclick="window.print()">Print receipt</button></div>
+  <main class="sheet">
+    <section class="top">
+      <div class="brand">
+        <div class="logo">LPG</div>
+        <div>
+          <h1>${escapeHtml(business.business_name || 'LPG Cylinder Shop')}</h1>
+          <p class="muted">${escapeHtml(business.address || '')}</p>
+          <p class="muted">Phone: ${escapeHtml(business.phone || '-')}</p>
+        </div>
+      </div>
+      <div class="invoice-box">
+        <span class="badge">LPG sale receipt</span>
+        <div class="no">${invoice}</div>
+      </div>
+    </section>
+
+    <section class="meta">
+      <div class="meta-card"><span>Date & time</span><b>${formatDate(completed.sale.created_at)}</b></div>
+      <div class="meta-card"><span>Payment</span><b>${paymentLabel}</b></div>
+      <div class="meta-card"><span>Status</span><b>${escapeHtml(completed.sale.status || 'completed')}</b></div>
+      <div class="meta-card"><span>Items</span><b>${lines.length}</b></div>
+    </section>
+
+    ${customerBlock}
+
+    <table>
+      <thead><tr><th>#</th><th>Sold cylinder</th><th class="right">Qty</th><th class="right">Rate</th><th class="right">Amount</th></tr></thead>
+      <tbody>
+        ${lines.map((x, i) => `<tr>
+          <td>${i + 1}</td>
+          <td><b>${escapeHtml(x.sold_company)} ${escapeHtml(x.sold_size)} ${escapeHtml(x.sold_item_type)}</b><div class="empty-return">Empty received: ${Number(x.empty_return_quantity || 0)} · ${escapeHtml(x.empty_return_company || '-')} ${escapeHtml(x.empty_return_size || '')}</div></td>
+          <td class="right">${Number(x.sold_quantity || 0)}</td>
+          <td class="right">${formatMoney(Number(x.unit_price || 0), currency)}</td>
+          <td class="right"><b>${formatMoney(Number(x.line_total || 0), currency)}</b></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+
+    <section class="totals">
+      <div class="row"><span>Subtotal</span><b>${formatMoney(Number(completed.sale.subtotal || 0), currency)}</b></div>
+      <div class="row"><span>Discount</span><b>${formatMoney(Number(completed.sale.discount || 0), currency)}</b></div>
+      <div class="row"><span>Paid</span><b>${formatMoney(Number(completed.sale.paid_amount || 0), currency)}</b></div>
+      <div class="row"><span>Due</span><b class="due">${formatMoney(Number(completed.sale.due_amount || 0), currency)}</b></div>
+      <div class="row grand"><span>Total</span><b>${formatMoney(Number(completed.sale.total || 0), currency)}</b></div>
+    </section>
+
+    <section class="footer">
+      <p>${escapeHtml(business.receipt_message || 'Thank you. Please check cylinder seal and weight before leaving.')}</p>
+      <p>Generated by CounterPOS LPG</p>
+    </section>
+  </main>
+  <script>
+    window.addEventListener('load', function () {
+      setTimeout(function () { window.focus(); window.print(); }, 650);
+    });
+  </script>
+</body>
+</html>`;
+    w.document.open();
+    w.document.write(html);
     w.document.close();
   };
 
