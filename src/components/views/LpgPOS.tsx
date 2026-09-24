@@ -433,8 +433,8 @@ export default function LpgPOS() {
       </div>
 
       {completed && (
-        <div className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-slate-950/60 px-3 py-4 sm:px-6 sm:py-8">
-          <div className="mx-auto flex min-h-full w-full max-w-5xl items-start justify-center">
+        <div className="fixed inset-0 z-[9999] h-[100dvh] w-screen overflow-y-scroll overscroll-y-contain bg-slate-100 px-3 py-4 pb-20 sm:px-6 sm:py-8" style={{ height: '100dvh', overflowY: 'scroll', touchAction: 'pan-y' }}>
+          <div className="mx-auto w-full max-w-5xl">
             <div className="w-full rounded-3xl bg-white shadow-2xl">
               <div className="sticky top-0 z-10 flex flex-col gap-3 border-b border-slate-200 bg-white/95 px-4 py-4 backdrop-blur sm:flex-row sm:items-center sm:justify-between sm:px-6 rounded-t-3xl">
                 <div>
@@ -448,7 +448,7 @@ export default function LpgPOS() {
                 </div>
               </div>
 
-              <div className="p-4 sm:p-6 lg:p-8">
+              <div className="p-4 pb-16 sm:p-6 sm:pb-20 lg:p-8 lg:pb-24">
                 <div className="mx-auto max-w-4xl rounded-[2rem] border border-slate-200 bg-white p-5 shadow-soft sm:p-7">
                   <div className="flex flex-col gap-4 border-b-4 border-amber-400 pb-5 sm:flex-row sm:items-start sm:justify-between">
                     <div className="flex items-center gap-4">
