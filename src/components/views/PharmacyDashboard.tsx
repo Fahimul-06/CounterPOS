@@ -139,9 +139,9 @@ export default function PharmacyDashboard({ onNavigate }: { onNavigate?: (view: 
           <div className="space-y-3">
             {alerts.low.slice(0, 8).map((m) => (
               <div key={m.id} className="rounded-xl border border-slate-200 p-3">
-                <div className="flex items-center justify-between gap-2"><p className="font-bold text-slate-900 text-sm">{m.name}</p><Badge color="red">Low</Badge></div>
+                <div className="flex items-center justify-between gap-2"><p className="font-bold text-slate-900 text-sm">{m.name}</p><Badge color={Number(m.pieces || 0) <= 0 ? 'red' : 'amber'}>{Number(m.pieces || 0) <= 0 ? 'StockOut' : 'Low'}</Badge></div>
                 <p className="text-xs text-slate-500 mt-1">{m.generic_name} · Rack {m.rack_location || 'N/A'}</p>
-                <p className="text-xs font-semibold text-slate-700 mt-2">{unitText(m)}</p>
+                <p className={Number(m.pieces || 0) <= 0 ? 'mt-2 inline-flex rounded-md bg-rose-100 px-2 py-0.5 text-xs font-extrabold text-rose-700 ring-1 ring-rose-200' : 'text-xs font-semibold text-slate-700 mt-2'}>{Number(m.pieces || 0) <= 0 ? 'StockOut' : unitText(m)}</p>
               </div>
             ))}
             {alerts.low.length === 0 && <div className="py-8 text-center text-slate-500"><Pill className="h-8 w-8 mx-auto mb-2 text-emerald-500" />All medicines are above low stock level.</div>}

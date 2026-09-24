@@ -584,7 +584,12 @@ function StockSummary({ m }: { m: Medicine }) {
           {m.pieces} pc
         </span>
       )}
-      {totalPieces === 0 && <span className="text-xs text-slate-400">No stock</span>}
+      {totalPieces === 0 && (
+        <span className="inline-flex items-center gap-1 rounded-md bg-rose-100 px-2 py-0.5 text-xs font-extrabold text-rose-700 ring-1 ring-rose-200">
+          <AlertCircle className="h-3 w-3" />
+          StockOut
+        </span>
+      )}
     </div>
   );
 }

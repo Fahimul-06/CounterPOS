@@ -216,13 +216,17 @@ export default function PharmacyPOS() {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                 {filtered.map((m) => {
                   const stock = Number(m.pieces || 0);
-                  const low = stock <= Number(m.low_stock_threshold || 20);
+                  const stockOut = stock <= 0;
+                  const low = !stockOut && stock <= Number(m.low_stock_threshold || 20);
                   return (
                     <button
                       key={m.id}
                       onClick={() => add(m)}
-                      className="group text-left rounded-3xl border border-slate-200 bg-white p-3.5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-soft-lg disabled:cursor-not-allowed disabled:opacity-55"
-                      disabled={stock <= 0}
+                      className={classNames(
+                        'group text-left rounded-3xl border p-3.5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-soft-lg disabled:cursor-not-allowed disabled:opacity-85',
+                        stockOut ? 'border-rose-300 bg-rose-50/80 ring-1 ring-rose-100' : 'border-slate-200 bg-white',
+                      )}
+                      disabled={stockOut}
                     >
                       <div className="flex gap-3">
                         <div className="h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 grid place-items-center ring-1 ring-emerald-100">
@@ -231,7 +235,7 @@ export default function PharmacyPOS() {
                         <div className="min-w-0 flex-1">
                           <div className="flex items-start justify-between gap-2">
                             <p className="font-black leading-5 text-slate-950 line-clamp-2">{m.name}</p>
-                            <Badge color={stock <= 0 ? 'red' : low ? 'amber' : 'green'}>{stock <= 0 ? 'Out' : low ? 'Low' : 'Stock'}</Badge>
+                            <Badge color={stockOut ? 'red' : low ? 'amber' : 'green'}>{stockOut ? 'StockOut' : low ? 'Low' : 'Stock'}</Badge>
                           </div>
                           <p className="mt-1 line-clamp-1 text-xs font-semibold text-slate-500">{m.generic_name || 'Generic'} · {m.strength || 'Strength'} · {m.dosage_form || 'Form'}</p>
                           <p className="mt-1 flex items-center gap-1 text-[11px] text-slate-400"><MapPin className="h-3 w-3" /> Rack {m.rack_location || 'N/A'} · {m.barcode || m.sku || 'No code'}</p>
@@ -242,7 +246,7 @@ export default function PharmacyPOS() {
                           <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Selling price</p>
                           <p className="text-lg font-black text-slate-950">{formatMoney(Number(m.selling_price || m.price || 0), business?.currency || 'BDT')}</p>
                         </div>
-                        <p className="rounded-2xl bg-slate-50 px-2.5 py-1 text-right text-[11px] font-bold text-slate-600">{unitText(m)}</p>
+                        <p className={classNames('rounded-2xl px-2.5 py-1 text-right text-[11px] font-bold', stockOut ? 'bg-rose-100 text-rose-700' : 'bg-slate-50 text-slate-600')}>{stockOut ? 'StockOut' : unitText(m)}</p>
                       </div>
                     </button>
                   );
