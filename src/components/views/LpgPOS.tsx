@@ -432,20 +432,108 @@ export default function LpgPOS() {
         </Card>
       </div>
 
-      <Modal open={!!completed} onClose={() => setCompleted(null)} title="LPG sale receipt" size="lg">
-        {completed && <div className="p-5 space-y-4">
-          <div className="rounded-3xl border border-slate-200 p-5 bg-white">
-            <div className="text-center"><h2 className="text-xl font-black text-slate-950">{business?.business_name}</h2><p className="text-sm text-slate-500">{business?.address}</p><p className="text-sm text-slate-500">{business?.phone}</p><Badge color="amber">LPG sale receipt</Badge></div>
-            <div className="my-4 border-t border-dashed border-slate-300" />
-            <div className="grid grid-cols-2 gap-2 text-sm"><Info label="Invoice" value={`#${completed.sale.id.slice(-8).toUpperCase()}`} /><Info label="Date" value={formatDate(completed.sale.created_at)} /><Info label="Payment" value={completed.sale.payment_method} /><Info label="Customer" value={completed.sale.customer_name || 'Walk-in'} />{completed.sale.customer_phone && <Info label="Phone" value={completed.sale.customer_phone} />}{completed.sale.customer_address && <Info label="Address" value={completed.sale.customer_address} />}</div>
-            <div className="my-4 border-t border-dashed border-slate-300" />
-            <div className="space-y-3">{completed.lpg_items.map((line) => <div key={line.id} className="rounded-2xl bg-slate-50 p-3"><div className="flex justify-between gap-3"><b>{line.sold_company} {line.sold_size} {line.sold_item_type}</b><b>{formatMoney(line.line_total, currency)}</b></div><p className="text-sm text-slate-500">Sold {line.sold_quantity} x {formatMoney(line.unit_price, currency)}</p><p className="text-sm text-amber-700 font-bold">Empty received: {line.empty_return_quantity} · {line.empty_return_company} {line.empty_return_size}</p></div>)}</div>
-            <div className="my-4 border-t border-dashed border-slate-300" />
-            <Info label="Subtotal" value={formatMoney(completed.sale.subtotal, currency)} /><Info label="Discount" value={formatMoney(completed.sale.discount, currency)} /><Info label="Paid" value={formatMoney(Number(completed.sale.paid_amount || 0), currency)} /><Info label="Due" value={formatMoney(Number(completed.sale.due_amount || 0), currency)} /><div className="mt-3 flex justify-between text-xl font-black"><span>Total</span><span>{formatMoney(completed.sale.total, currency)}</span></div>
+      {completed && (
+        <div className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-slate-950/60 px-3 py-4 sm:px-6 sm:py-8">
+          <div className="mx-auto flex min-h-full w-full max-w-5xl items-start justify-center">
+            <div className="w-full rounded-3xl bg-white shadow-2xl">
+              <div className="sticky top-0 z-10 flex flex-col gap-3 border-b border-slate-200 bg-white/95 px-4 py-4 backdrop-blur sm:flex-row sm:items-center sm:justify-between sm:px-6 rounded-t-3xl">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-600">Completed sale</p>
+                  <h2 className="text-xl font-black text-slate-950">LPG sale receipt</h2>
+                  <p className="text-sm text-slate-500">Review the full receipt, then print when ready.</p>
+                </div>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button variant="secondary" onClick={() => setCompleted(null)}>Close</Button>
+                  <Button onClick={printReceipt}><Printer className="h-4 w-4" /> Print receipt</Button>
+                </div>
+              </div>
+
+              <div className="p-4 sm:p-6 lg:p-8">
+                <div className="mx-auto max-w-4xl rounded-[2rem] border border-slate-200 bg-white p-5 shadow-soft sm:p-7">
+                  <div className="flex flex-col gap-4 border-b-4 border-amber-400 pb-5 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="grid h-16 w-16 place-items-center rounded-3xl bg-gradient-to-br from-amber-500 to-red-500 text-lg font-black text-white shadow-lg shadow-amber-500/20">LPG</div>
+                      <div>
+                        <h2 className="text-2xl font-black text-slate-950">{business?.business_name || 'LPG Cylinder Shop'}</h2>
+                        <p className="mt-1 text-sm text-slate-500">{business?.address || 'Business address'}</p>
+                        <p className="text-sm text-slate-500">Phone: {business?.phone || '-'}</p>
+                      </div>
+                    </div>
+                    <div className="text-left sm:text-right">
+                      <Badge color="amber">LPG sale receipt</Badge>
+                      <p className="mt-2 text-2xl font-black text-slate-950">#{completed.sale.id.slice(-8).toUpperCase()}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <ReceiptInfoBox label="Date & time" value={formatDate(completed.sale.created_at)} />
+                    <ReceiptInfoBox label="Payment" value={String(completed.sale.payment_method || '').replace('_', ' ')} />
+                    <ReceiptInfoBox label="Status" value={completed.sale.status || 'completed'} />
+                    <ReceiptInfoBox label="Items" value={String(completed.lpg_items.length)} />
+                  </div>
+
+                  {(completed.sale.customer_name || completed.sale.customer_phone || completed.sale.customer_address) && (
+                    <div className="mt-5 rounded-3xl border border-amber-200 bg-amber-50/70 p-4">
+                      <p className="text-xs font-black uppercase tracking-wide text-amber-700">Customer information</p>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        {completed.sale.customer_name && <Info label="Name" value={completed.sale.customer_name} />}
+                        {completed.sale.customer_phone && <Info label="Phone" value={completed.sale.customer_phone} />}
+                        {completed.sale.customer_address && <Info label="Address" value={completed.sale.customer_address} />}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-6 overflow-x-auto rounded-3xl border border-slate-200">
+                    <table className="min-w-[760px] w-full text-sm">
+                      <thead className="bg-slate-950 text-white">
+                        <tr>
+                          <th className="px-4 py-3 text-left">#</th>
+                          <th className="px-4 py-3 text-left">Sold cylinder</th>
+                          <th className="px-4 py-3 text-right">Qty</th>
+                          <th className="px-4 py-3 text-right">Rate</th>
+                          <th className="px-4 py-3 text-right">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 bg-white">
+                        {completed.lpg_items.map((line, index) => (
+                          <tr key={line.id}>
+                            <td className="px-4 py-4 font-bold text-slate-500">{index + 1}</td>
+                            <td className="px-4 py-4">
+                              <p className="font-black text-slate-950">{line.sold_company} {line.sold_size} {line.sold_item_type}</p>
+                              <p className="mt-1 text-xs font-bold text-amber-700">Empty received: {line.empty_return_quantity} · {line.empty_return_company || '-'} {line.empty_return_size || ''}</p>
+                            </td>
+                            <td className="px-4 py-4 text-right font-bold">{line.sold_quantity}</td>
+                            <td className="px-4 py-4 text-right">{formatMoney(line.unit_price, currency)}</td>
+                            <td className="px-4 py-4 text-right font-black">{formatMoney(line.line_total, currency)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="mt-6 flex justify-end">
+                    <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                      <Info label="Subtotal" value={formatMoney(completed.sale.subtotal, currency)} />
+                      <Info label="Discount" value={formatMoney(completed.sale.discount, currency)} />
+                      <Info label="Paid" value={formatMoney(Number(completed.sale.paid_amount || 0), currency)} />
+                      <Info label="Due" value={formatMoney(Number(completed.sale.due_amount || 0), currency)} />
+                      <div className="mt-4 flex justify-between border-t-2 border-slate-900 pt-4 text-2xl font-black text-slate-950">
+                        <span>Total</span>
+                        <span>{formatMoney(completed.sale.total, currency)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 border-t border-dashed border-slate-300 pt-4 text-center text-sm text-slate-500">
+                    <p>{business?.receipt_message || 'Thank you. Please check cylinder seal and weight before leaving.'}</p>
+                    <p className="mt-1 font-bold">Generated by CounterPOS LPG</p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setCompleted(null)}>Close</Button><Button onClick={printReceipt}><Printer className="h-4 w-4" /> Print receipt</Button></div>
-        </div>}
-      </Modal>
+        </div>
+      )}
     </PageContainer>
   );
 }
@@ -454,5 +542,6 @@ function PayButton({ active, onClick, icon: Icon, label }: { active: boolean; on
   return <button onClick={onClick} className={classNames('rounded-2xl border px-2 py-3 text-xs font-black transition-all', active ? 'border-amber-300 bg-amber-50 text-amber-800 ring-2 ring-amber-100' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50')}><Icon className="h-4 w-4 mx-auto mb-1" />{label}</button>;
 }
 function Mini({ label, value, danger }: { label: string; value: string; danger?: boolean }) { return <div className={classNames('rounded-2xl px-2 py-2', danger ? 'bg-rose-100 text-rose-700' : 'bg-slate-50')}><p className="text-[10px] font-black uppercase text-slate-400">{label}</p><p className="font-black text-slate-900 text-xs">{value}</p></div>; }
-function Info({ label, value }: { label: string; value: string }) { return <div className="flex justify-between gap-4 text-sm"><span className="text-slate-500">{label}</span><b className="text-slate-900 text-right">{value}</b></div>; }
+function Info({ label, value }: { label: string; value: string }) { return <div className="flex justify-between gap-4 text-sm py-1"><span className="text-slate-500">{label}</span><b className="text-slate-900 text-right">{value}</b></div>; }
+function ReceiptInfoBox({ label, value }: { label: string; value: string }) { return <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3"><p className="text-xs font-bold text-slate-500">{label}</p><p className="mt-1 break-words text-sm font-black capitalize text-slate-950">{value}</p></div>; }
 function escapeHtml(v: string) { return String(v).replace(/[&<>'"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c] || c)); }
