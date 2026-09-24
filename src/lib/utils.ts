@@ -83,6 +83,12 @@ export const CATEGORY_META: Record<BusinessCategory, { label: string; icon: stri
     gradient: 'from-fuchsia-500 to-pink-500',
     accent: 'fuchsia',
   },
+  lpg_cylinder: {
+    label: 'LPG Cylinder Shop',
+    icon: 'flame',
+    gradient: 'from-amber-500 to-red-500',
+    accent: 'amber',
+  },
 };
 
 export const CATEGORY_OPTIONS: { value: BusinessCategory; label: string }[] = [
@@ -91,6 +97,7 @@ export const CATEGORY_OPTIONS: { value: BusinessCategory; label: string }[] = [
   { value: 'pharmacy', label: 'Pharmacy' },
   { value: 'departmental_store', label: 'Departmental Store' },
   { value: 'clothing', label: 'Clothing Shop' },
+  { value: 'lpg_cylinder', label: 'LPG Cylinder Shop' },
 ];
 
 export function classNames(...classes: (string | false | null | undefined)[]): string {

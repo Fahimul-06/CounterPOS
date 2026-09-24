@@ -21,6 +21,9 @@ import PharmacySuppliers from './components/views/PharmacySuppliers';
 import PharmacyCustomers from './components/views/PharmacyCustomers';
 import PharmacyReports from './components/views/PharmacyReports';
 import PharmacyOperations from './components/views/PharmacyOperations';
+import LpgDashboard from './components/views/LpgDashboard';
+import LpgInventory from './components/views/LpgInventory';
+import LpgPOS from './components/views/LpgPOS';
 import { Spinner } from './components/ui/Shared';
 
 type AuthRoute = 'signup' | 'signin' | 'app';
@@ -102,15 +105,21 @@ function AuthedApp() {
   }
 
   const isPharmacy = business?.category === 'pharmacy';
-  const safeView = isPharmacy && ['products', 'medicines', 'dresses', 'tables', 'kitchen'].includes(view) ? 'pharmacy_inventory' : view;
+  const isLpg = business?.category === 'lpg_cylinder';
+  const safeView = isPharmacy && ['products', 'medicines', 'dresses', 'tables', 'kitchen', 'lpg_inventory'].includes(view)
+    ? 'pharmacy_inventory'
+    : isLpg && ['products', 'medicines', 'dresses', 'tables', 'kitchen', 'pharmacy_inventory', 'pharmacy_suppliers', 'pharmacy_customers', 'pharmacy_reports', 'pharmacy_operations'].includes(view)
+      ? 'lpg_inventory'
+      : view;
 
   return (
     <AppLayout current={safeView as View} onNavigate={setView}>
-      {safeView === 'dashboard' && (isPharmacy ? <PharmacyDashboard onNavigate={setView} /> : <Dashboard onNavigate={setView} />)}
-      {safeView === 'pos' && (isPharmacy ? <PharmacyPOS /> : <PosTerminal />)}
+      {safeView === 'dashboard' && (isPharmacy ? <PharmacyDashboard onNavigate={setView} /> : isLpg ? <LpgDashboard onNavigate={setView} /> : <Dashboard onNavigate={setView} />)}
+      {safeView === 'pos' && (isPharmacy ? <PharmacyPOS /> : isLpg ? <LpgPOS /> : <PosTerminal />)}
       {safeView === 'tables' && <Tables />}
-      {safeView === 'products' && !isPharmacy && <Products />}
+      {safeView === 'products' && !isPharmacy && !isLpg && <Products />}
       {safeView === 'medicines' && !isPharmacy && <Medicines />}
+      {safeView === 'lpg_inventory' && <LpgInventory />}
       {safeView === 'pharmacy_inventory' && <PharmacyInventory />}
       {safeView === 'pharmacy_suppliers' && <PharmacySuppliers />}
       {safeView === 'pharmacy_customers' && <PharmacyCustomers />}

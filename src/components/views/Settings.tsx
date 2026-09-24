@@ -20,6 +20,7 @@ import {
   Truck,
   MapPinned,
   Receipt,
+  Flame,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import type { BusinessCategory } from '../../lib/supabase';
@@ -34,6 +35,7 @@ const CATEGORY_ICONS: Record<BusinessCategory, typeof Utensils> = {
   pharmacy: Pill,
   departmental_store: Building2,
   clothing: Shirt,
+  lpg_cylinder: Flame,
 };
 
 const CURRENCIES = ['BDT', 'USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'INR', 'NGN', 'BRL', 'ZAR', 'AED', 'SAR', 'SGD', 'KES', 'GHS', 'PKR', 'LKR', 'NPR'];

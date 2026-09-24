@@ -53,7 +53,7 @@ const Business = mongoose.model('Business', schema({
   owner_name: String,
   phone: String,
   business_name: String,
-  category: { type: String, enum: ['restaurant', 'shop', 'pharmacy', 'departmental_store', 'clothing'], default: 'shop' },
+  category: { type: String, enum: ['restaurant', 'shop', 'pharmacy', 'departmental_store', 'clothing', 'lpg_cylinder'], default: 'shop' },
   address: String,
   currency: { type: String, default: 'BDT' },
   tax_rate: { type: Number, default: 0 },
@@ -140,6 +140,37 @@ const Dress = mongoose.model('Dress', schema({
   image_url: { type: String, default: null },
   website: { type: String, default: null },
   is_active: { type: Boolean, default: true },
+}));
+
+
+const LpgCylinder = mongoose.model('LpgCylinder', schema({
+  business_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', index: true },
+  cylinder_size: { type: String, required: true, index: true },
+  company: { type: String, required: true, index: true },
+  item_type: { type: String, enum: ['refill', 'package'], default: 'refill', index: true },
+  price: { type: Number, default: 0 },
+  cost: { type: Number, default: 0 },
+  full_stock: { type: Number, default: 0 },
+  empty_stock: { type: Number, default: 0 },
+  sku: { type: String, default: null },
+  low_stock_threshold: { type: Number, default: 3 },
+  notes: { type: String, default: null },
+  is_active: { type: Boolean, default: true },
+}));
+
+const LpgCylinderSale = mongoose.model('LpgCylinderSale', schema({
+  business_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', index: true },
+  sale_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Sale', index: true },
+  sold_cylinder_id: { type: mongoose.Schema.Types.ObjectId, ref: 'LpgCylinder', index: true },
+  sold_size: { type: String, default: null },
+  sold_company: { type: String, default: null },
+  sold_item_type: { type: String, enum: ['refill', 'package'], default: 'refill' },
+  sold_quantity: { type: Number, default: 0 },
+  empty_return_size: { type: String, default: null },
+  empty_return_company: { type: String, default: null },
+  empty_return_quantity: { type: Number, default: 0 },
+  unit_price: { type: Number, default: 0 },
+  line_total: { type: Number, default: 0 },
 }));
 
 const Sale = mongoose.model('Sale', schema({
@@ -389,7 +420,7 @@ const PaymentTransaction = mongoose.model('PaymentTransaction', schema({
   created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }));
 
-const models = { businesses: Business, products: Product, medicines: Medicine, dresses: Dress, sales: Sale, sale_items: SaleItem, expenses: Expense, branches: Branch, medicine_batches: MedicineBatch, suppliers: Supplier, purchases: Purchase, purchase_items: PurchaseItem, supplier_payments: SupplierPayment, purchase_returns: PurchaseReturn, customers: Customer, prescriptions: Prescription, customer_dues: CustomerDue, sales_returns: SalesReturn, stock_movements: StockMovement, stock_adjustments: StockAdjustment, cash_registers: CashRegister, stock_transfers: StockTransfer, role_permissions: RolePermission, audit_logs: AuditLog, payment_transactions: PaymentTransaction };
+const models = { businesses: Business, products: Product, medicines: Medicine, dresses: Dress, lpg_cylinders: LpgCylinder, lpg_cylinder_sales: LpgCylinderSale, sales: Sale, sale_items: SaleItem, expenses: Expense, branches: Branch, medicine_batches: MedicineBatch, suppliers: Supplier, purchases: Purchase, purchase_items: PurchaseItem, supplier_payments: SupplierPayment, purchase_returns: PurchaseReturn, customers: Customer, prescriptions: Prescription, customer_dues: CustomerDue, sales_returns: SalesReturn, stock_movements: StockMovement, stock_adjustments: StockAdjustment, cash_registers: CashRegister, stock_transfers: StockTransfer, role_permissions: RolePermission, audit_logs: AuditLog, payment_transactions: PaymentTransaction };
 
 function sign(user) {
   return jwt.sign({ id: String(user._id), email: user.email }, JWT_SECRET, { expiresIn: '7d' });
@@ -572,6 +603,7 @@ function clean(doc) {
   if (obj.branch_id) obj.branch_id = String(obj.branch_id);
   if (obj.supplier_id) obj.supplier_id = String(obj.supplier_id);
   if (obj.customer_id) obj.customer_id = String(obj.customer_id);
+  if (obj.sold_cylinder_id) obj.sold_cylinder_id = String(obj.sold_cylinder_id);
   if (obj.purchase_id) obj.purchase_id = String(obj.purchase_id);
   if (obj.from_branch_id) obj.from_branch_id = String(obj.from_branch_id);
   if (obj.to_branch_id) obj.to_branch_id = String(obj.to_branch_id);
@@ -611,6 +643,9 @@ app.post('/api/auth/register', async (req, res, next) => {
     });
     if (category === 'pharmacy') {
       await seedPharmacyMockData(user._id, user._id, { skipIfExists: true });
+    }
+    if (category === 'lpg_cylinder') {
+      await seedLpgMockData(user._id, user._id, { skipIfExists: true });
     }
     res.status(201).json({ token: sign(user), user: { id: String(user._id), email: user.email } });
   } catch (err) { next(err); }
@@ -723,6 +758,42 @@ async function syncMedicineStock(medicineId, businessId) {
   const pieces = batches.reduce((sum, b) => sum + Number(b.available_quantity || 0), 0);
   await Medicine.findOneAndUpdate({ _id: medicineId, business_id: businessId }, { pieces, updated_at: new Date() });
   return pieces;
+}
+
+
+async function requireLpgBusiness(userId) {
+  const business = await Business.findById(userId);
+  if (!business) {
+    const err = new Error('Business profile not found.');
+    err.status = 404;
+    throw err;
+  }
+  if (business.category !== 'lpg_cylinder') {
+    const err = new Error('This feature is only available for LPG cylinder shop accounts.');
+    err.status = 403;
+    throw err;
+  }
+  return business;
+}
+
+async function seedLpgMockData(businessId, userId, options = {}) {
+  if (options.reset) await LpgCylinder.deleteMany({ business_id: businessId });
+  if (options.skipIfExists && await LpgCylinder.exists({ business_id: businessId })) {
+    return { inserted: 0, skipped: true };
+  }
+  const rows = [
+    { cylinder_size: '12 kg', company: 'Bashundhara LP Gas', item_type: 'refill', price: 1450, cost: 1320, full_stock: 18, empty_stock: 11, sku: 'LPG-BASH-12-R', low_stock_threshold: 5 },
+    { cylinder_size: '12 kg', company: 'Jamuna Gas', item_type: 'refill', price: 1440, cost: 1310, full_stock: 12, empty_stock: 7, sku: 'LPG-JAM-12-R', low_stock_threshold: 5 },
+    { cylinder_size: '12 kg', company: 'Omera LPG', item_type: 'refill', price: 1460, cost: 1330, full_stock: 10, empty_stock: 5, sku: 'LPG-OMERA-12-R', low_stock_threshold: 5 },
+    { cylinder_size: '12 kg', company: 'Beximco LPG', item_type: 'refill', price: 1455, cost: 1325, full_stock: 8, empty_stock: 6, sku: 'LPG-BEX-12-R', low_stock_threshold: 4 },
+    { cylinder_size: '12 kg', company: 'Bashundhara LP Gas', item_type: 'package', price: 3600, cost: 3250, full_stock: 6, empty_stock: 2, sku: 'LPG-BASH-12-P', low_stock_threshold: 2 },
+    { cylinder_size: '12 kg', company: 'Jamuna Gas', item_type: 'package', price: 3550, cost: 3200, full_stock: 4, empty_stock: 2, sku: 'LPG-JAM-12-P', low_stock_threshold: 2 },
+    { cylinder_size: '5.5 kg', company: 'Omera LPG', item_type: 'refill', price: 720, cost: 650, full_stock: 9, empty_stock: 4, sku: 'LPG-OMERA-55-R', low_stock_threshold: 3 },
+    { cylinder_size: '35 kg', company: 'Bashundhara LP Gas', item_type: 'refill', price: 4200, cost: 3900, full_stock: 5, empty_stock: 3, sku: 'LPG-BASH-35-R', low_stock_threshold: 2 },
+    { cylinder_size: '45 kg', company: 'Jamuna Gas', item_type: 'refill', price: 5400, cost: 5050, full_stock: 3, empty_stock: 2, sku: 'LPG-JAM-45-R', low_stock_threshold: 2 },
+  ].map((item) => ({ ...item, business_id: businessId, created_by: userId, notes: 'Bangladesh LPG demo stock', is_active: true }));
+  const docs = await LpgCylinder.insertMany(rows);
+  return { inserted: docs.length, skipped: false };
 }
 
 async function seedPharmacyMockData(businessId, userId, options = {}) {
@@ -1064,6 +1135,109 @@ app.post('/api/pharmacy/pos/sale', auth, async (req, res, next) => {
     await audit({ business_id: req.user.id, user_id: req.user.id, action: 'fefo_pos_sale', resource: 'sales', resource_id: sale._id, details: { total, payment_method: paymentMethod, items: saleItems.length }, req });
     const rows = await SaleItem.find({ sale_id: sale._id, business_id: req.user.id });
     res.status(201).json({ data: { sale: clean(sale), items: rows.map(clean) } });
+  } catch (err) { next(err); }
+});
+
+
+app.post('/api/lpg/seed', auth, async (req, res, next) => {
+  try {
+    await requireLpgBusiness(req.user.id);
+    const result = await seedLpgMockData(req.user.id, req.user.id, { reset: Boolean(req.body?.reset), skipIfExists: !req.body?.reset });
+    res.json({ data: result });
+  } catch (err) { next(err); }
+});
+
+app.get('/api/lpg/dashboard', auth, async (req, res, next) => {
+  try {
+    await requireLpgBusiness(req.user.id);
+    const now = new Date();
+    const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const [cylinders, todaySales, monthSales, expenses] = await Promise.all([
+      LpgCylinder.find({ business_id: req.user.id, is_active: true }),
+      Sale.find({ business_id: req.user.id, order_type: 'lpg_cylinder', created_at: { $gte: startToday } }),
+      Sale.find({ business_id: req.user.id, order_type: 'lpg_cylinder', created_at: { $gte: startMonth } }),
+      Expense.find({ business_id: req.user.id, created_at: { $gte: startMonth } }),
+    ]);
+    const todayRevenue = todaySales.reduce((s, x) => s + Number(x.total || 0), 0);
+    const monthRevenue = monthSales.reduce((s, x) => s + Number(x.total || 0), 0);
+    const monthExpenses = expenses.reduce((s, x) => s + Number(x.amount || 0), 0);
+    const fullStock = cylinders.reduce((s, x) => s + Number(x.full_stock || 0), 0);
+    const emptyStock = cylinders.reduce((s, x) => s + Number(x.empty_stock || 0), 0);
+    const stockOut = cylinders.filter((x) => Number(x.full_stock || 0) <= 0);
+    const lowStock = cylinders.filter((x) => Number(x.full_stock || 0) > 0 && Number(x.full_stock || 0) <= Number(x.low_stock_threshold || 3));
+    const stockValue = cylinders.reduce((s, x) => s + Number(x.full_stock || 0) * Number(x.cost || 0), 0);
+    res.json({ data: { today_revenue: todayRevenue, today_sales_count: todaySales.length, monthly_revenue: monthRevenue, monthly_expenses: monthExpenses, monthly_net: monthRevenue - monthExpenses, full_stock: fullStock, empty_stock: emptyStock, stock_out: stockOut.map(clean), low_stock: lowStock.map(clean), stock_value: stockValue, total_items: cylinders.length } });
+  } catch (err) { next(err); }
+});
+
+app.post('/api/lpg/pos/sale', auth, async (req, res, next) => {
+  try {
+    const business = await requireLpgBusiness(req.user.id);
+    const items = Array.isArray(req.body.items) ? req.body.items : [];
+    if (!items.length) return res.status(400).json({ message: 'Cart is empty.' });
+    const paymentMethod = String(req.body.payment_method || 'cash');
+    const discount = Math.max(Number(req.body.discount || 0), 0);
+    const customerName = String(req.body.customer_name || '').trim() || null;
+    const customerPhone = String(req.body.customer_phone || '').trim() || null;
+    const lpgRows = [];
+    const saleItems = [];
+    let subtotal = 0;
+
+    for (const line of items) {
+      const cylinder = await LpgCylinder.findOne({ _id: line.cylinder_id, business_id: req.user.id, is_active: true });
+      if (!cylinder) return res.status(404).json({ message: 'Cylinder item not found.' });
+      const qty = Math.max(Number(line.quantity || 0), 0);
+      if (qty <= 0) return res.status(400).json({ message: 'Invalid cylinder quantity.' });
+      if (Number(cylinder.full_stock || 0) < qty) return res.status(409).json({ message: `Not enough full cylinders for ${cylinder.company} ${cylinder.cylinder_size}.` });
+      const emptyQty = Math.max(Number(line.empty_return_quantity || 0), 0);
+      const unitPrice = Number(line.unit_price || cylinder.price || 0);
+      const lineTotal = qty * unitPrice;
+      cylinder.full_stock = Number(cylinder.full_stock || 0) - qty;
+      cylinder.empty_stock = Number(cylinder.empty_stock || 0) + emptyQty;
+      await cylinder.save();
+      subtotal += lineTotal;
+      const itemName = `${cylinder.company} ${cylinder.cylinder_size} ${cylinder.item_type === 'package' ? 'Package' : 'Refill'}`;
+      saleItems.push({ product_id: cylinder._id, name: itemName, unit_price: unitPrice, quantity: qty, line_total: lineTotal });
+      lpgRows.push({
+        business_id: req.user.id,
+        sold_cylinder_id: cylinder._id,
+        sold_size: cylinder.cylinder_size,
+        sold_company: cylinder.company,
+        sold_item_type: cylinder.item_type,
+        sold_quantity: qty,
+        empty_return_size: String(line.empty_return_size || cylinder.cylinder_size || '').trim() || null,
+        empty_return_company: String(line.empty_return_company || cylinder.company || '').trim() || null,
+        empty_return_quantity: emptyQty,
+        unit_price: unitPrice,
+        line_total: lineTotal,
+      });
+    }
+
+    const total = Math.max(subtotal - discount, 0);
+    const sale = await Sale.create({
+      business_id: req.user.id,
+      subtotal,
+      discount,
+      total,
+      payment_method: paymentMethod,
+      status: 'completed',
+      order_type: 'lpg_cylinder',
+      customer_name: customerName,
+      customer_phone: customerPhone,
+      paid_amount: total,
+      due_amount: 0,
+      service_area: business.service_area || null,
+      tax_zone: business.tax_zone || null,
+      note: req.body.note || null,
+      created_by: req.user.id,
+    });
+    await SaleItem.insertMany(saleItems.map((x) => ({ ...x, sale_id: sale._id, business_id: req.user.id })));
+    await LpgCylinderSale.insertMany(lpgRows.map((x) => ({ ...x, sale_id: sale._id })));
+    await audit({ business_id: req.user.id, user_id: req.user.id, action: 'lpg_pos_sale', resource: 'sales', resource_id: sale._id, details: { total, items: saleItems.length }, req });
+    const rows = await SaleItem.find({ sale_id: sale._id, business_id: req.user.id });
+    const lpgDetails = await LpgCylinderSale.find({ sale_id: sale._id, business_id: req.user.id });
+    res.status(201).json({ data: { sale: clean(sale), items: rows.map(clean), lpg_items: lpgDetails.map(clean) } });
   } catch (err) { next(err); }
 });
 

@@ -1,4 +1,4 @@
-export type BusinessCategory = 'restaurant' | 'shop' | 'pharmacy' | 'departmental_store' | 'clothing';
+export type BusinessCategory = 'restaurant' | 'shop' | 'pharmacy' | 'departmental_store' | 'clothing' | 'lpg_cylinder';
 
 export interface User { id: string; email?: string }
 export interface Session { access_token: string; user: User }
@@ -60,7 +60,11 @@ export interface Sale {
   status: string;
   table_number?: string | null;
   order_type?: string | null;
+  customer_id?: string | null;
   customer_name: string | null;
+  customer_phone?: string | null;
+  paid_amount?: number;
+  due_amount?: number;
   note: string | null;
   service_area: string | null;
   tax_zone: string | null;
@@ -130,6 +134,43 @@ export interface Medicine {
   expiry_date: string;
   expiry_alert_days: number;
   is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+
+export interface LpgCylinder {
+  id: string;
+  business_id: string;
+  cylinder_size: string;
+  company: string;
+  item_type: 'refill' | 'package';
+  price: number;
+  cost: number;
+  full_stock: number;
+  empty_stock: number;
+  sku: string | null;
+  low_stock_threshold: number;
+  notes: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LpgCylinderSale {
+  id: string;
+  business_id: string;
+  sale_id: string;
+  sold_cylinder_id: string;
+  sold_size: string;
+  sold_company: string;
+  sold_item_type: 'refill' | 'package';
+  sold_quantity: number;
+  empty_return_size: string | null;
+  empty_return_company: string | null;
+  empty_return_quantity: number;
+  unit_price: number;
+  line_total: number;
   created_at: string;
   updated_at: string;
 }

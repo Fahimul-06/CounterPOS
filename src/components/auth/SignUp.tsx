@@ -17,6 +17,7 @@ import {
   Pill,
   Shirt,
   Sparkles,
+  Flame,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { CATEGORY_OPTIONS } from '../../lib/utils';
@@ -29,6 +30,7 @@ const CATEGORY_VISUALS: Record<BusinessCategory, { icon: typeof Utensils; tint: 
   pharmacy: { icon: Pill, tint: 'bg-rose-50 text-rose-600', ring: 'ring-rose-200' },
   departmental_store: { icon: Building2, tint: 'bg-blue-50 text-blue-600', ring: 'ring-blue-200' },
   clothing: { icon: Shirt, tint: 'bg-fuchsia-50 text-fuchsia-600', ring: 'ring-fuchsia-200' },
+  lpg_cylinder: { icon: Flame, tint: 'bg-amber-50 text-amber-700', ring: 'ring-amber-200' },
 };
 
 export default function SignUp() {
@@ -142,7 +144,7 @@ export default function SignUp() {
             {[
               { icon: Sparkles, text: 'Lightning-fast checkout with a tactile POS terminal' },
               { icon: ShoppingBag, text: 'Live inventory that updates with every sale' },
-              { icon: Building2, text: 'Built for five business types out of the box' },
+              { icon: Building2, text: 'Built for multiple business types out of the box' },
             ].map(({ icon: Icon, text }) => (
               <div key={text} className="flex items-start gap-3">
                 <div className="mt-0.5 h-8 w-8 rounded-lg bg-white/10 grid place-items-center shrink-0">

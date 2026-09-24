@@ -27,12 +27,13 @@ import {
   CircleDollarSign,
   PanelLeftClose,
   PanelLeftOpen,
+  Flame,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { CATEGORY_META, classNames } from '../../lib/utils';
 import type { BusinessCategory } from '../../lib/supabase';
 
-export type View = 'dashboard' | 'pos' | 'tables' | 'products' | 'medicines' | 'pharmacy_inventory' | 'pharmacy_suppliers' | 'pharmacy_customers' | 'pharmacy_reports' | 'pharmacy_operations' | 'dresses' | 'kitchen' | 'sales' | 'expenses' | 'settings' | 'subscription';
+export type View = 'dashboard' | 'pos' | 'tables' | 'products' | 'medicines' | 'lpg_inventory' | 'pharmacy_inventory' | 'pharmacy_suppliers' | 'pharmacy_customers' | 'pharmacy_reports' | 'pharmacy_operations' | 'dresses' | 'kitchen' | 'sales' | 'expenses' | 'settings' | 'subscription';
 
 interface NavItem {
   id: View;
@@ -60,6 +61,17 @@ const PHARMACY_NAV: NavItem[] = [
   { id: 'pharmacy_customers', label: 'Customers', icon: Users, description: 'Prescriptions, dues & returns', group: 'finance' },
   { id: 'pharmacy_reports', label: 'Reports', icon: BarChart3, description: 'Sales, profit, stock & expiry reports', group: 'finance' },
   { id: 'pharmacy_operations', label: 'Operations', icon: ShieldCheck, description: 'Branches, cash register, roles & audit logs', group: 'operations' },
+  { id: 'expenses', label: 'Expenses', icon: WalletCards, description: 'Daily & monthly costs', group: 'finance' },
+  { id: 'settings', label: 'Settings', icon: Settings, description: 'Business profile', group: 'account' },
+  { id: 'subscription', label: 'Subscription', icon: CreditCard, description: 'Trial, monthly & yearly plan', group: 'account' },
+];
+
+
+const LPG_NAV: NavItem[] = [
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, description: 'Sales, stock and empty cylinder status', group: 'main' },
+  { id: 'pos', label: 'LPG POS', icon: ScanLine, description: 'Sell cylinders and receive empties', group: 'main' },
+  { id: 'lpg_inventory', label: 'LPG Inventory', icon: Flame, description: 'Full and empty cylinder stock', group: 'inventory' },
+  { id: 'sales', label: 'Sales', icon: Receipt, description: 'History & receipts', group: 'finance' },
   { id: 'expenses', label: 'Expenses', icon: WalletCards, description: 'Daily & monthly costs', group: 'finance' },
   { id: 'settings', label: 'Settings', icon: Settings, description: 'Business profile', group: 'account' },
   { id: 'subscription', label: 'Subscription', icon: CreditCard, description: 'Trial, monthly & yearly plan', group: 'account' },
@@ -99,6 +111,7 @@ const GROUP_LABELS: Record<NonNullable<NavItem['group']>, string> = {
 
 function buildNav(category?: string): NavItem[] {
   if (category === 'pharmacy') return PHARMACY_NAV;
+  if (category === 'lpg_cylinder') return LPG_NAV;
   if (category === 'clothing') {
     const nav = [...BASE_NAV];
     nav.splice(3, 0, DRESSES_NAV);
