@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Banknote, CreditCard, Flame, Minus, Plus, Printer, Receipt, Search, ShoppingCart, Trash2, Wallet } from 'lucide-react';
+import { AlertCircle, Banknote, CreditCard, Flame, Minus, Plus, Printer, Receipt, Search, ShoppingCart, Trash2, UserPlus, Wallet } from 'lucide-react';
 import { apiRequest, supabase } from '../../lib/supabase';
-import type { LpgCylinder, Sale, SaleItem, LpgCylinderSale } from '../../lib/supabase';
+import type { LpgCylinder, Sale, SaleItem, LpgCylinderSale, Customer } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { classNames, formatDate, formatMoney } from '../../lib/utils';
 import { Badge, Button, Card, EmptyState, Modal, PageContainer, PageHeader, Spinner } from '../ui/Shared';
 
-type PaymentMethod = 'cash' | 'card' | 'bkash' | 'nagad' | 'bangla_qr' | 'other';
+type PaymentMethod = 'cash' | 'card' | 'bkash' | 'nagad' | 'bangla_qr' | 'due' | 'other';
 
 type CartLine = {
   cylinder: LpgCylinder;
@@ -31,6 +31,9 @@ export default function LpgPOS() {
   const [discount, setDiscount] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  const [customerAddress, setCustomerAddress] = useState('');
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState('new');
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,13 +54,31 @@ export default function LpgPOS() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [business]);
+  const loadCustomers = async () => {
+    if (!business) return;
+    const { data } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('business_id', business.id)
+      .eq('is_active', true)
+      .order('name', { ascending: true });
+    setCustomers((data || []) as Customer[]);
+  };
+
+  useEffect(() => { load(); loadCustomers(); }, [business]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return items;
     return items.filter((item) => [item.company, item.cylinder_size, item.item_type, item.sku].some((v) => String(v || '').toLowerCase().includes(q)));
   }, [items, search]);
+
+  const companyOptions = useMemo(() => {
+    const names = new Set<string>(EMPTY_COMPANIES.filter((x) => x !== 'Other'));
+    items.forEach((item) => item.company && names.add(item.company));
+    cart.forEach((line) => line.empty_return_company && names.add(line.empty_return_company));
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [items, cart]);
 
   const subtotal = cart.reduce((sum, line) => sum + line.quantity * Number(line.cylinder.price || 0), 0);
   const discountValue = Math.max(Number(discount || 0), 0);
@@ -89,9 +110,29 @@ export default function LpgPOS() {
 
   const removeLine = (id: string) => setCart((prev) => prev.filter((x) => x.cylinder.id !== id));
 
+  const selectCustomer = (id: string) => {
+    setSelectedCustomerId(id);
+    if (id === 'new') {
+      setCustomerName('');
+      setCustomerPhone('');
+      setCustomerAddress('');
+      return;
+    }
+    const customer = customers.find((x) => x.id === id);
+    if (customer) {
+      setCustomerName(customer.name || '');
+      setCustomerPhone(customer.phone || '');
+      setCustomerAddress(customer.address || '');
+    }
+  };
+
   const completeSale = async () => {
     if (!cart.length) {
       setError('Cart is empty. Add at least one LPG cylinder.');
+      return;
+    }
+    if (payment === 'due' && (!customerName.trim() || !customerPhone.trim())) {
+      setError('For due sale, select a customer or add customer name and phone number.');
       return;
     }
     setSubmitting(true);
@@ -100,8 +141,10 @@ export default function LpgPOS() {
       const body = {
         payment_method: payment,
         discount: discountValue,
+        customer_id: selectedCustomerId !== 'new' ? selectedCustomerId : null,
         customer_name: customerName.trim() || null,
         customer_phone: customerPhone.trim() || null,
+        customer_address: customerAddress.trim() || null,
         note: note.trim() || null,
         items: cart.map((line) => ({
           cylinder_id: line.cylinder.id,
@@ -118,7 +161,11 @@ export default function LpgPOS() {
       setDiscount('');
       setCustomerName('');
       setCustomerPhone('');
+      setCustomerAddress('');
+      setSelectedCustomerId('new');
+      setPayment('cash');
       setNote('');
+      await loadCustomers();
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sale failed.');
@@ -135,10 +182,10 @@ export default function LpgPOS() {
     w.document.write(`<!doctype html><html><head><title>LPG Receipt</title><style>
       @page{size:80mm auto;margin:4mm} body{font-family:Arial, sans-serif;color:#111827;margin:0;font-size:12px}.receipt{width:72mm;margin:auto}.center{text-align:center}.shop{font-size:18px;font-weight:800}.muted{color:#64748b}.hr{border-top:1px dashed #94a3b8;margin:8px 0}.row{display:flex;justify-content:space-between;gap:8px}.total{font-size:16px;font-weight:900}.item{margin:7px 0}.badge{display:inline-block;border:1px solid #111827;border-radius:999px;padding:2px 8px;font-size:10px;font-weight:800}table{width:100%;border-collapse:collapse}td{vertical-align:top;padding:2px 0}</style></head><body><div class="receipt">
       <div class="center"><div class="shop">${escapeHtml(business.business_name || 'LPG Shop')}</div><div class="muted">${escapeHtml(business.address || '')}</div><div>${escapeHtml(business.phone || '')}</div><div style="margin-top:4px"><span class="badge">LPG SALE RECEIPT</span></div></div>
-      <div class="hr"></div><div class="row"><span>Invoice</span><b>#${completed.sale.id.slice(-8).toUpperCase()}</b></div><div class="row"><span>Date</span><span>${formatDate(completed.sale.created_at)}</span></div><div class="row"><span>Payment</span><b>${completed.sale.payment_method}</b></div>${completed.sale.customer_name ? `<div class="row"><span>Customer</span><b>${escapeHtml(completed.sale.customer_name)}</b></div>` : ''}${completed.sale.customer_phone ? `<div class="row"><span>Phone</span><span>${escapeHtml(completed.sale.customer_phone)}</span></div>` : ''}
+      <div class="hr"></div><div class="row"><span>Invoice</span><b>#${completed.sale.id.slice(-8).toUpperCase()}</b></div><div class="row"><span>Date</span><span>${formatDate(completed.sale.created_at)}</span></div><div class="row"><span>Payment</span><b>${completed.sale.payment_method}</b></div>${completed.sale.customer_name ? `<div class="row"><span>Customer</span><b>${escapeHtml(completed.sale.customer_name)}</b></div>` : ''}${completed.sale.customer_phone ? `<div class="row"><span>Phone</span><span>${escapeHtml(completed.sale.customer_phone)}</span></div>` : ''}${completed.sale.customer_address ? `<div class="row"><span>Address</span><span>${escapeHtml(completed.sale.customer_address)}</span></div>` : ''}
       <div class="hr"></div>
       ${lines.map((x) => `<div class="item"><b>${escapeHtml(x.sold_company)} ${escapeHtml(x.sold_size)} ${x.sold_item_type}</b><div class="row"><span>Sold: ${x.sold_quantity} x ${formatMoney(x.unit_price, currency)}</span><b>${formatMoney(x.line_total, currency)}</b></div><div class="muted">Empty received: ${x.empty_return_quantity} ${escapeHtml(x.empty_return_company || '-')} ${escapeHtml(x.empty_return_size || '')}</div></div>`).join('')}
-      <div class="hr"></div><div class="row"><span>Subtotal</span><b>${formatMoney(completed.sale.subtotal, currency)}</b></div><div class="row"><span>Discount</span><b>${formatMoney(completed.sale.discount, currency)}</b></div><div class="row total"><span>Total</span><span>${formatMoney(completed.sale.total, currency)}</span></div><div class="hr"></div><div class="center muted">${escapeHtml(business.receipt_message || 'Thank you. Please check cylinder seal and weight before leaving.')}</div></div><script>window.onload=function(){setTimeout(function(){window.print();},200)}</script></body></html>`);
+      <div class="hr"></div><div class="row"><span>Subtotal</span><b>${formatMoney(completed.sale.subtotal, currency)}</b></div><div class="row"><span>Discount</span><b>${formatMoney(completed.sale.discount, currency)}</b></div><div class="row total"><span>Total</span><span>${formatMoney(completed.sale.total, currency)}</span></div><div class="row"><span>Paid</span><b>${formatMoney(Number(completed.sale.paid_amount || 0), currency)}</b></div><div class="row"><span>Due</span><b>${formatMoney(Number(completed.sale.due_amount || 0), currency)}</b></div><div class="hr"></div><div class="center muted">${escapeHtml(business.receipt_message || 'Thank you. Please check cylinder seal and weight before leaving.')}</div></div><script>window.onload=function(){setTimeout(function(){window.print();},200)}</script></body></html>`);
     w.document.close();
   };
 
@@ -148,6 +195,7 @@ export default function LpgPOS() {
     <PageContainer className="max-w-[1600px]">
       <PageHeader title="LPG Cylinder POS" subtitle="Sell full/refill cylinders and record which empty cylinder returned to the shop against every sale." />
       {error && <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700 flex gap-2"><AlertCircle className="h-4 w-4 mt-0.5" />{error}</div>}
+      <datalist id="lpg-empty-company-options">{companyOptions.map((x) => <option key={x} value={x} />)}</datalist>
       <div className="grid gap-5 xl:grid-cols-[1fr_430px]">
         <div className="space-y-4">
           <Card className="p-4">
@@ -198,9 +246,13 @@ export default function LpgPOS() {
                   <div className="mt-3 rounded-2xl bg-white p-3 space-y-2">
                     <p className="text-[11px] font-black uppercase tracking-wide text-slate-400">Empty cylinder received against this sale</p>
                     <div className="grid grid-cols-2 gap-2">
-                      <select value={line.empty_return_company} onChange={(e) => updateLine(line.cylinder.id, { empty_return_company: e.target.value })} className="input text-xs">
-                        {EMPTY_COMPANIES.map((x) => <option key={x}>{x}</option>)}
-                      </select>
+                      <input
+                        value={line.empty_return_company}
+                        onChange={(e) => updateLine(line.cylinder.id, { empty_return_company: e.target.value })}
+                        className="input text-xs"
+                        list="lpg-empty-company-options"
+                        placeholder="Empty brand/company"
+                      />
                       <select value={line.empty_return_size} onChange={(e) => updateLine(line.cylinder.id, { empty_return_size: e.target.value })} className="input text-xs">
                         {EMPTY_SIZES.map((x) => <option key={x}>{x}</option>)}
                       </select>
@@ -218,12 +270,33 @@ export default function LpgPOS() {
               <PayButton active={payment === 'bkash'} onClick={() => setPayment('bkash')} icon={Wallet} label="bKash" />
               <PayButton active={payment === 'nagad'} onClick={() => setPayment('nagad')} icon={Wallet} label="Nagad" />
               <PayButton active={payment === 'bangla_qr'} onClick={() => setPayment('bangla_qr')} icon={Receipt} label="Bangla QR" />
+              <PayButton active={payment === 'due'} onClick={() => setPayment('due')} icon={UserPlus} label="Due" />
               <PayButton active={payment === 'other'} onClick={() => setPayment('other')} icon={Wallet} label="Other" />
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="input" placeholder="Customer name" />
-              <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} className="input" placeholder="Phone" />
-            </div>
+            {payment === 'due' ? (
+              <div className="rounded-3xl border border-amber-200 bg-amber-50/70 p-3 space-y-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-wide text-amber-700">Due customer required</p>
+                  <p className="text-xs text-amber-700/80">Select an existing customer or add a new customer with name, phone and address.</p>
+                </div>
+                <select value={selectedCustomerId} onChange={(e) => selectCustomer(e.target.value)} className="input">
+                  <option value="new">+ Add new due customer</option>
+                  {customers.map((customer) => (
+                    <option key={customer.id} value={customer.id}>{customer.name} · {customer.phone || 'No phone'} · Due {formatMoney(Number(customer.due_balance || 0), currency)}</option>
+                  ))}
+                </select>
+                <div className="grid grid-cols-2 gap-2">
+                  <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="input" placeholder="Customer name *" />
+                  <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} className="input" placeholder="Phone number *" />
+                </div>
+                <input value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} className="input" placeholder="Customer address" />
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="input" placeholder="Customer name optional" />
+                <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} className="input" placeholder="Phone optional" />
+              </div>
+            )}
             <input value={discount} onChange={(e) => setDiscount(e.target.value)} className="input" type="number" min="0" placeholder="Discount amount" />
             <textarea value={note} onChange={(e) => setNote(e.target.value)} className="input min-h-[70px]" placeholder="Sale note (optional)" />
             <div className="rounded-3xl bg-slate-950 p-4 text-white space-y-2">
@@ -241,11 +314,11 @@ export default function LpgPOS() {
           <div className="rounded-3xl border border-slate-200 p-5 bg-white">
             <div className="text-center"><h2 className="text-xl font-black text-slate-950">{business?.business_name}</h2><p className="text-sm text-slate-500">{business?.address}</p><p className="text-sm text-slate-500">{business?.phone}</p><Badge color="amber">LPG sale receipt</Badge></div>
             <div className="my-4 border-t border-dashed border-slate-300" />
-            <div className="grid grid-cols-2 gap-2 text-sm"><Info label="Invoice" value={`#${completed.sale.id.slice(-8).toUpperCase()}`} /><Info label="Date" value={formatDate(completed.sale.created_at)} /><Info label="Payment" value={completed.sale.payment_method} /><Info label="Customer" value={completed.sale.customer_name || 'Walk-in'} /></div>
+            <div className="grid grid-cols-2 gap-2 text-sm"><Info label="Invoice" value={`#${completed.sale.id.slice(-8).toUpperCase()}`} /><Info label="Date" value={formatDate(completed.sale.created_at)} /><Info label="Payment" value={completed.sale.payment_method} /><Info label="Customer" value={completed.sale.customer_name || 'Walk-in'} />{completed.sale.customer_phone && <Info label="Phone" value={completed.sale.customer_phone} />}{completed.sale.customer_address && <Info label="Address" value={completed.sale.customer_address} />}</div>
             <div className="my-4 border-t border-dashed border-slate-300" />
             <div className="space-y-3">{completed.lpg_items.map((line) => <div key={line.id} className="rounded-2xl bg-slate-50 p-3"><div className="flex justify-between gap-3"><b>{line.sold_company} {line.sold_size} {line.sold_item_type}</b><b>{formatMoney(line.line_total, currency)}</b></div><p className="text-sm text-slate-500">Sold {line.sold_quantity} x {formatMoney(line.unit_price, currency)}</p><p className="text-sm text-amber-700 font-bold">Empty received: {line.empty_return_quantity} · {line.empty_return_company} {line.empty_return_size}</p></div>)}</div>
             <div className="my-4 border-t border-dashed border-slate-300" />
-            <Info label="Subtotal" value={formatMoney(completed.sale.subtotal, currency)} /><Info label="Discount" value={formatMoney(completed.sale.discount, currency)} /><div className="mt-3 flex justify-between text-xl font-black"><span>Total</span><span>{formatMoney(completed.sale.total, currency)}</span></div>
+            <Info label="Subtotal" value={formatMoney(completed.sale.subtotal, currency)} /><Info label="Discount" value={formatMoney(completed.sale.discount, currency)} /><Info label="Paid" value={formatMoney(Number(completed.sale.paid_amount || 0), currency)} /><Info label="Due" value={formatMoney(Number(completed.sale.due_amount || 0), currency)} /><div className="mt-3 flex justify-between text-xl font-black"><span>Total</span><span>{formatMoney(completed.sale.total, currency)}</span></div>
           </div>
           <div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setCompleted(null)}>Close</Button><Button onClick={printReceipt}><Printer className="h-4 w-4" /> Print receipt</Button></div>
         </div>}

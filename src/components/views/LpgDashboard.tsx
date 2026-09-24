@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, Boxes, Flame, ScanLine, TrendingUp, WalletCards } from 'lucide-react';
+import { AlertTriangle, Boxes, Flame, ScanLine, TrendingUp, Users, WalletCards } from 'lucide-react';
 import { apiRequest } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { formatMoney } from '../../lib/utils';
@@ -36,9 +36,10 @@ export default function LpgDashboard({ onNavigate }: Props) {
         subtitle={`LPG Cylinder Shop · ${business?.business_name || ''}`}
         action={<Button onClick={() => onNavigate('pos')}><ScanLine className="h-4 w-4" /> Start LPG sale</Button>}
       />
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 mb-6">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5 mb-6">
         <Kpi label="Today sales" value={formatMoney(data?.today_revenue || 0, currency)} icon={TrendingUp} sub={`${data?.today_sales_count || 0} LPG sales`} />
         <Kpi label="Monthly sales" value={formatMoney(data?.monthly_revenue || 0, currency)} icon={WalletCards} sub={`Net: ${formatMoney(data?.monthly_net || 0, currency)}`} />
+        <Kpi label="Due total" value={formatMoney(data?.due_total || 0, currency)} icon={Users} sub={`${data?.due_count || 0} due customer(s)`} />
         <Kpi label="Full cylinders" value={data?.full_stock || 0} icon={Flame} sub="Ready to sell" />
         <Kpi label="Empty cylinders" value={data?.empty_stock || 0} icon={Boxes} sub="Returned and in shop" />
       </div>
@@ -52,6 +53,41 @@ export default function LpgDashboard({ onNavigate }: Props) {
           {(data?.stock_out || []).length === 0 ? <p className="text-sm text-slate-500">No StockOut LPG cylinders.</p> : <div className="space-y-2">{data.stock_out.map((x: any) => <Row key={x.id} item={x} currency={currency} danger />)}</div>}
         </Card>
       </div>
+
+      <Card className="p-5 mt-4">
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-2"><Users className="h-5 w-5 text-orange-500" /><h2 className="font-black text-slate-950">Due customers</h2></div>
+          <Badge color="amber">{formatMoney(data?.due_total || 0, currency)} due</Badge>
+        </div>
+        {(data?.due_customers || []).length === 0 ? (
+          <p className="text-sm text-slate-500">No due LPG customers right now.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 text-left text-xs font-black uppercase tracking-wide text-slate-400">
+                  <th className="py-2 pr-3">Customer</th>
+                  <th className="py-2 pr-3">Phone</th>
+                  <th className="py-2 pr-3">Address</th>
+                  <th className="py-2 pr-3">Invoice</th>
+                  <th className="py-2 text-right">Due</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.due_customers.map((due: any) => (
+                  <tr key={due.id} className="border-b border-slate-50">
+                    <td className="py-3 pr-3 font-black text-slate-900">{due.customer_name}</td>
+                    <td className="py-3 pr-3 text-slate-600">{due.customer_phone || '-'}</td>
+                    <td className="py-3 pr-3 text-slate-600 max-w-xs truncate">{due.customer_address || '-'}</td>
+                    <td className="py-3 pr-3 text-slate-500">{due.invoice_no || '-'}</td>
+                    <td className="py-3 text-right font-black text-rose-600">{formatMoney(due.balance || 0, currency)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
     </PageContainer>
   );
 }

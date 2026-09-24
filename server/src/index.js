@@ -189,6 +189,7 @@ const Sale = mongoose.model('Sale', schema({
   customer_id: { type: mongoose.Schema.Types.ObjectId, default: null, index: true },
   customer_name: { type: String, default: null },
   customer_phone: { type: String, default: null },
+  customer_address: { type: String, default: null },
   paid_amount: { type: Number, default: 0 },
   due_amount: { type: Number, default: 0 },
   note: { type: String, default: null },
@@ -1147,18 +1148,47 @@ app.post('/api/lpg/seed', auth, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+
 app.get('/api/lpg/dashboard', auth, async (req, res, next) => {
   try {
     await requireLpgBusiness(req.user.id);
     const now = new Date();
     const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const [cylinders, todaySales, monthSales, expenses] = await Promise.all([
+    const [cylinders, todaySales, monthSales, expenses, openDues] = await Promise.all([
       LpgCylinder.find({ business_id: req.user.id, is_active: true }),
       Sale.find({ business_id: req.user.id, order_type: 'lpg_cylinder', created_at: { $gte: startToday } }),
       Sale.find({ business_id: req.user.id, order_type: 'lpg_cylinder', created_at: { $gte: startMonth } }),
       Expense.find({ business_id: req.user.id, created_at: { $gte: startMonth } }),
+      CustomerDue.find({ business_id: req.user.id, balance: { $gt: 0 } }).sort({ created_at: -1 }).limit(50),
     ]);
+    const lpgDueSaleIds = openDues.map((x) => x.sale_id).filter(Boolean);
+    const lpgDueSales = await Sale.find({ _id: { $in: lpgDueSaleIds }, business_id: req.user.id, order_type: 'lpg_cylinder' });
+    const saleMap = new Map(lpgDueSales.map((sale) => [String(sale._id), sale]));
+    const customerIds = Array.from(new Set(openDues.map((x) => String(x.customer_id || '')).filter(Boolean)));
+    const dueCustomers = await Customer.find({ _id: { $in: customerIds }, business_id: req.user.id });
+    const customerMap = new Map(dueCustomers.map((customer) => [String(customer._id), customer]));
+    const dueDetails = openDues
+      .filter((due) => saleMap.has(String(due.sale_id)))
+      .map((due) => {
+        const sale = saleMap.get(String(due.sale_id));
+        const customer = customerMap.get(String(due.customer_id));
+        return {
+          id: String(due._id),
+          sale_id: String(due.sale_id),
+          customer_id: due.customer_id ? String(due.customer_id) : null,
+          customer_name: customer?.name || sale?.customer_name || 'Due customer',
+          customer_phone: customer?.phone || sale?.customer_phone || null,
+          customer_address: customer?.address || sale?.customer_address || null,
+          amount: Number(due.amount || 0),
+          paid: Number(due.paid || 0),
+          balance: Number(due.balance || 0),
+          status: due.status,
+          sale_total: Number(sale?.total || due.amount || 0),
+          invoice_no: sale ? `#${String(sale._id).slice(-8).toUpperCase()}` : null,
+          created_at: due.created_at,
+        };
+      });
     const todayRevenue = todaySales.reduce((s, x) => s + Number(x.total || 0), 0);
     const monthRevenue = monthSales.reduce((s, x) => s + Number(x.total || 0), 0);
     const monthExpenses = expenses.reduce((s, x) => s + Number(x.amount || 0), 0);
@@ -1167,19 +1197,27 @@ app.get('/api/lpg/dashboard', auth, async (req, res, next) => {
     const stockOut = cylinders.filter((x) => Number(x.full_stock || 0) <= 0);
     const lowStock = cylinders.filter((x) => Number(x.full_stock || 0) > 0 && Number(x.full_stock || 0) <= Number(x.low_stock_threshold || 3));
     const stockValue = cylinders.reduce((s, x) => s + Number(x.full_stock || 0) * Number(x.cost || 0), 0);
-    res.json({ data: { today_revenue: todayRevenue, today_sales_count: todaySales.length, monthly_revenue: monthRevenue, monthly_expenses: monthExpenses, monthly_net: monthRevenue - monthExpenses, full_stock: fullStock, empty_stock: emptyStock, stock_out: stockOut.map(clean), low_stock: lowStock.map(clean), stock_value: stockValue, total_items: cylinders.length } });
+    const dueTotal = dueDetails.reduce((s, x) => s + Number(x.balance || 0), 0);
+    res.json({ data: { today_revenue: todayRevenue, today_sales_count: todaySales.length, monthly_revenue: monthRevenue, monthly_expenses: monthExpenses, monthly_net: monthRevenue - monthExpenses, full_stock: fullStock, empty_stock: emptyStock, stock_out: stockOut.map(clean), low_stock: lowStock.map(clean), stock_value: stockValue, total_items: cylinders.length, due_total: dueTotal, due_count: dueDetails.length, due_customers: dueDetails } });
   } catch (err) { next(err); }
 });
+
 
 app.post('/api/lpg/pos/sale', auth, async (req, res, next) => {
   try {
     const business = await requireLpgBusiness(req.user.id);
     const items = Array.isArray(req.body.items) ? req.body.items : [];
     if (!items.length) return res.status(400).json({ message: 'Cart is empty.' });
-    const paymentMethod = String(req.body.payment_method || 'cash');
+    const paymentMethod = String(req.body.payment_method || 'cash').toLowerCase();
+    const isDue = paymentMethod === 'due';
     const discount = Math.max(Number(req.body.discount || 0), 0);
+    let customerId = req.body.customer_id || null;
     const customerName = String(req.body.customer_name || '').trim() || null;
     const customerPhone = String(req.body.customer_phone || '').trim() || null;
+    const customerAddress = String(req.body.customer_address || '').trim() || null;
+    if (isDue && (!customerName || !customerPhone)) {
+      return res.status(400).json({ message: 'Due sale requires customer name and phone number.' });
+    }
     const lpgRows = [];
     const saleItems = [];
     let subtotal = 0;
@@ -1215,6 +1253,26 @@ app.post('/api/lpg/pos/sale', auth, async (req, res, next) => {
     }
 
     const total = Math.max(subtotal - discount, 0);
+    let customerDoc = null;
+    if (isDue) {
+      if (customerId) {
+        customerDoc = await Customer.findOne({ _id: customerId, business_id: req.user.id });
+      }
+      if (!customerDoc && customerPhone) {
+        customerDoc = await Customer.findOne({ business_id: req.user.id, phone: customerPhone });
+      }
+      if (!customerDoc) {
+        customerDoc = await Customer.create({ business_id: req.user.id, name: customerName, phone: customerPhone, address: customerAddress, due_balance: 0, is_active: true });
+      } else {
+        customerDoc.name = customerName || customerDoc.name;
+        customerDoc.phone = customerPhone || customerDoc.phone;
+        customerDoc.address = customerAddress || customerDoc.address;
+        customerDoc.is_active = true;
+        await customerDoc.save();
+      }
+      customerId = customerDoc._id;
+    }
+
     const sale = await Sale.create({
       business_id: req.user.id,
       subtotal,
@@ -1223,10 +1281,12 @@ app.post('/api/lpg/pos/sale', auth, async (req, res, next) => {
       payment_method: paymentMethod,
       status: 'completed',
       order_type: 'lpg_cylinder',
-      customer_name: customerName,
-      customer_phone: customerPhone,
-      paid_amount: total,
-      due_amount: 0,
+      customer_id: customerId || null,
+      customer_name: customerDoc?.name || customerName,
+      customer_phone: customerDoc?.phone || customerPhone,
+      customer_address: customerDoc?.address || customerAddress,
+      paid_amount: isDue ? 0 : total,
+      due_amount: isDue ? total : 0,
       service_area: business.service_area || null,
       tax_zone: business.tax_zone || null,
       note: req.body.note || null,
@@ -1234,7 +1294,12 @@ app.post('/api/lpg/pos/sale', auth, async (req, res, next) => {
     });
     await SaleItem.insertMany(saleItems.map((x) => ({ ...x, sale_id: sale._id, business_id: req.user.id })));
     await LpgCylinderSale.insertMany(lpgRows.map((x) => ({ ...x, sale_id: sale._id })));
-    await audit({ business_id: req.user.id, user_id: req.user.id, action: 'lpg_pos_sale', resource: 'sales', resource_id: sale._id, details: { total, items: saleItems.length }, req });
+    if (isDue && customerDoc) {
+      await CustomerDue.create({ business_id: req.user.id, customer_id: customerDoc._id, sale_id: sale._id, amount: total, paid: 0, balance: total, status: 'open' });
+      customerDoc.due_balance = Number(customerDoc.due_balance || 0) + total;
+      await customerDoc.save();
+    }
+    await audit({ business_id: req.user.id, user_id: req.user.id, action: isDue ? 'lpg_pos_due_sale' : 'lpg_pos_sale', resource: 'sales', resource_id: sale._id, details: { total, items: saleItems.length, payment_method: paymentMethod }, req });
     const rows = await SaleItem.find({ sale_id: sale._id, business_id: req.user.id });
     const lpgDetails = await LpgCylinderSale.find({ sale_id: sale._id, business_id: req.user.id });
     res.status(201).json({ data: { sale: clean(sale), items: rows.map(clean), lpg_items: lpgDetails.map(clean) } });

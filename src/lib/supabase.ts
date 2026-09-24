@@ -63,6 +63,7 @@ export interface Sale {
   customer_id?: string | null;
   customer_name: string | null;
   customer_phone?: string | null;
+  customer_address?: string | null;
   paid_amount?: number;
   due_amount?: number;
   note: string | null;
@@ -171,6 +172,20 @@ export interface LpgCylinderSale {
   empty_return_quantity: number;
   unit_price: number;
   line_total: number;
+  created_at: string;
+  updated_at: string;
+}
+
+
+export interface Customer {
+  id: string;
+  business_id: string;
+  name: string;
+  phone: string | null;
+  address: string | null;
+  due_balance: number;
+  prescription_notes?: string | null;
+  is_active: boolean;
   created_at: string;
   updated_at: string;
 }
