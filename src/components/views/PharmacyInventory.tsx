@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Barcode, Boxes, CalendarClock, PackagePlus, Pill, RefreshCcw, Save, Search } from 'lucide-react';
+import { AlertCircle, Barcode, Boxes, CalendarClock, PackagePlus, Pencil, Pill, Printer, RefreshCcw, Save, Search, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { formatMoney, formatShortDate } from '../../lib/utils';
@@ -24,6 +24,7 @@ export default function PharmacyInventory() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [medicineForm, setMedicineForm] = useState<any>(emptyMedicine);
+  const [editingMedicineId, setEditingMedicineId] = useState<string | null>(null);
   const [batchForm, setBatchForm] = useState<any>(emptyBatch);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -49,16 +50,129 @@ export default function PharmacyInventory() {
     return medicines.filter((m) => !q || [m.name, m.brand_name, m.generic_name, m.manufacturer, m.category, m.barcode, m.sku, m.rack_location].some((v) => String(v || '').toLowerCase().includes(q)));
   }, [medicines, search]);
 
+  const inStockMedicines = useMemo(() => medicines.filter((m) => Number(m.pieces || 0) > 0), [medicines]);
+  const stockOutMedicines = useMemo(() => medicines.filter((m) => Number(m.pieces || 0) <= 0), [medicines]);
+  const totalPieces = useMemo(() => medicines.reduce((sum, m) => sum + Number(m.pieces || 0), 0), [medicines]);
+
+  const resetMedicineForm = () => {
+    setMedicineForm(emptyMedicine);
+    setEditingMedicineId(null);
+  };
+
+  const startEditMedicine = (m: any) => {
+    setEditingMedicineId(m.id);
+    setMedicineForm({
+      ...emptyMedicine,
+      ...m,
+      brand_name: m.brand_name || m.name || '',
+      name: m.name || '',
+      generic_name: m.generic_name || '',
+      manufacturer: m.manufacturer || '',
+      category: m.category || 'Analgesic',
+      strength: m.strength || '',
+      dosage_form: m.dosage_form || m.medicine_type || 'Tablet',
+      medicine_type: m.dosage_form || m.medicine_type || 'Tablet',
+      barcode: m.barcode || '',
+      sku: m.sku || '',
+      rack_location: m.rack_location || '',
+      purchase_price: String(m.purchase_price ?? m.cost ?? 0),
+      mrp: String(m.mrp ?? 0),
+      selling_price: String(m.selling_price ?? m.price ?? 0),
+      price: String(m.selling_price ?? m.price ?? 0),
+      cost: String(m.cost ?? m.purchase_price ?? 0),
+      pieces_per_strip: String(m.pieces_per_strip ?? 10),
+      strips_per_box: String(m.strips_per_box ?? 10),
+      low_stock_threshold: String(m.low_stock_threshold ?? 20),
+      image_url: m.image_url || '',
+      reason: m.reason || '',
+      expiry_alert_days: String(m.expiry_alert_days ?? 30),
+      is_active: m.is_active !== false,
+    });
+    setMessage(`Editing ${m.name}. Update the fields and click Update medicine.`);
+    window.setTimeout(() => document.getElementById('medicine-form-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  };
+
+  const printStockReport = () => {
+    if (!medicines.length) {
+      setMessage('No medicines available to print.');
+      return;
+    }
+    const entities: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+    const safe = (value: any) => String(value ?? '-').replace(/[&<>"']/g, (ch) => entities[ch] || ch);
+    const currency = business?.currency || 'BDT';
+    const sorted = [...medicines].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+    const rows = sorted.map((m, index) => {
+      const pieces = Number(m.pieces || 0);
+      const status = pieces <= 0 ? '<span class=\"status stockout\">StockOut</span>' : '<span class=\"status instock\">In Stock</span>';
+      return `<tr class=\"${pieces <= 0 ? 'stockout-row' : ''}\">
+        <td>${index + 1}</td>
+        <td><strong>${safe(m.name)}</strong><br><small>${safe(m.generic_name || '')}</small></td>
+        <td>${safe(m.manufacturer || '-')}</td>
+        <td>${safe(m.category || '-')}<br><small>${safe(m.strength || '')} ${safe(m.dosage_form || '')}</small></td>
+        <td>${safe(m.sku || m.barcode || '-')}</td>
+        <td>${safe(m.rack_location || '-')}</td>
+        <td class=\"num\"><strong>${pieces}</strong><br><small>${safe(unitText(m))}</small></td>
+        <td class=\"num\">${safe(formatMoney(Number(m.selling_price || m.price || 0), currency))}</td>
+        <td>${status}</td>
+      </tr>`;
+    }).join('');
+    const html = `<!doctype html>
+<html>
+<head>
+  <meta charset=\"utf-8\" />
+  <title>Medicine Stock Report</title>
+  <style>
+    *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;color:#0f172a;margin:0;padding:28px;background:#fff} 
+    .header{display:flex;justify-content:space-between;gap:20px;border-bottom:3px solid #059669;padding-bottom:16px;margin-bottom:18px}
+    .brand{display:flex;gap:12px;align-items:center}.logo{height:58px;width:58px;border-radius:14px;object-fit:cover;border:1px solid #d1fae5}.rx{height:58px;width:58px;border-radius:14px;background:#ecfdf5;color:#059669;display:grid;place-items:center;font-weight:900;font-size:24px;border:1px solid #a7f3d0}
+    h1{font-size:22px;margin:0}.muted{color:#64748b;font-size:12px;line-height:1.5}.right{text-align:right}.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:18px 0}.box{border:1px solid #e2e8f0;border-radius:14px;padding:12px}.box span{display:block;color:#64748b;font-size:11px;text-transform:uppercase;font-weight:800;letter-spacing:.08em}.box strong{font-size:22px}.stockout-count strong{color:#e11d48} table{width:100%;border-collapse:collapse;font-size:12px} th{background:#f8fafc;color:#475569;text-align:left;text-transform:uppercase;font-size:10px;letter-spacing:.08em;padding:9px;border-bottom:1px solid #cbd5e1}td{padding:9px;border-bottom:1px solid #e2e8f0;vertical-align:top}.num{text-align:right}.status{display:inline-block;border-radius:999px;padding:4px 8px;font-size:10px;font-weight:900}.instock{background:#dcfce7;color:#047857}.stockout{background:#ffe4e6;color:#be123c}.stockout-row{background:#fff1f2}.footer{margin-top:18px;font-size:11px;color:#64748b;text-align:center}@page{size:A4;margin:12mm}@media print{body{padding:0}.no-print{display:none}}
+  </style>
+</head>
+<body>
+  <div class=\"header\">
+    <div class=\"brand\">${business?.logo_url ? `<img class=\"logo\" src=\"${safe(business.logo_url)}\" />` : '<div class=\"rx\">Rx</div>'}<div><h1>${safe(business?.business_name || 'Pharmacy')}</h1><div class=\"muted\">${safe(business?.address || '')}<br>Phone: ${safe(business?.phone || '-')}<br>Zone: ${safe(business?.service_area || business?.tax_zone || '-')}</div></div></div>
+    <div class=\"right\"><h1>Medicine Stock Report</h1><div class=\"muted\">Printed: ${safe(new Date().toLocaleString())}</div></div>
+  </div>
+  <div class=\"summary\">
+    <div class=\"box\"><span>Total medicines</span><strong>${medicines.length}</strong></div>
+    <div class=\"box\"><span>In stock</span><strong>${inStockMedicines.length}</strong></div>
+    <div class=\"box stockout-count\"><span>StockOut</span><strong>${stockOutMedicines.length}</strong></div>
+    <div class=\"box\"><span>Total pieces</span><strong>${totalPieces}</strong></div>
+  </div>
+  <table>
+    <thead><tr><th>#</th><th>Medicine</th><th>Manufacturer</th><th>Category</th><th>SKU/Barcode</th><th>Rack</th><th class=\"num\">Stock</th><th class=\"num\">Sell price</th><th>Status</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div class=\"footer\">This report shows current medicine stock, stock quantity and StockOut medicines from CounterPOS.</div>
+  <script>window.onload = () => { window.print(); setTimeout(() => window.close(), 500); };</script>
+</body>
+</html>`;
+    const win = window.open('', '_blank', 'width=1100,height=800');
+    if (!win) {
+      setMessage('Popup blocked. Please allow popups to print the stock report.');
+      return;
+    }
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+  };
+
   const saveMedicine = async (e: FormEvent) => {
     e.preventDefault();
     if (!business) return;
+    const name = String(medicineForm.name || '').trim();
+    if (!name) {
+      setMessage('Medicine name is required.');
+      return;
+    }
     setSaving(true); setMessage(null);
-    const payload = {
-      business_id: business.id,
+    const basePayload: any = {
       ...medicineForm,
-      name: medicineForm.name.trim(),
-      brand_name: medicineForm.brand_name.trim() || medicineForm.name.trim(),
-      medicine_type: medicineForm.dosage_form,
+      business_id: business.id,
+      name,
+      brand_name: String(medicineForm.brand_name || '').trim() || name,
+      medicine_type: medicineForm.dosage_form || medicineForm.medicine_type || 'Tablet',
+      dosage_form: medicineForm.dosage_form || medicineForm.medicine_type || 'Tablet',
       price: Number(medicineForm.selling_price || medicineForm.price || 0),
       selling_price: Number(medicineForm.selling_price || medicineForm.price || 0),
       purchase_price: Number(medicineForm.purchase_price || 0),
@@ -68,15 +182,38 @@ export default function PharmacyInventory() {
       strips_per_box: Number(medicineForm.strips_per_box || 1),
       low_stock_threshold: Number(medicineForm.low_stock_threshold || 20),
       expiry_alert_days: Number(medicineForm.expiry_alert_days || 30),
-      boxes: 0, strips: 0, pieces: 0,
-      batch_number: null,
-      expiry_date: new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10),
       barcode: medicineForm.barcode || medicineForm.sku || `${Date.now()}`,
       sku: medicineForm.sku || medicineForm.barcode || `SKU-${Date.now().toString().slice(-6)}`,
+      updated_at: new Date().toISOString(),
     };
-    const { error } = await supabase.from('medicines').insert(payload).select().single();
+    delete basePayload.id;
+    delete basePayload._id;
+    delete basePayload.created_at;
+
+    let error: Error | null = null;
+    if (editingMedicineId) {
+      const result = await supabase.from('medicines').update(basePayload).eq('id', editingMedicineId).select().single();
+      error = result.error;
+    } else {
+      const insertPayload = {
+        ...basePayload,
+        boxes: 0,
+        strips: 0,
+        pieces: 0,
+        batch_number: null,
+        expiry_date: new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10),
+      };
+      const result = await supabase.from('medicines').insert(insertPayload).select().single();
+      error = result.error;
+    }
     setSaving(false);
-    if (error) setMessage(error.message); else { setMessage('Medicine saved. Now add its batch stock.'); setMedicineForm(emptyMedicine); await load(); }
+    if (error) {
+      setMessage(error.message);
+    } else {
+      setMessage(editingMedicineId ? 'Medicine updated successfully.' : 'Medicine saved. Now add its batch stock.');
+      resetMedicineForm();
+      await load();
+    }
   };
 
   const saveBatch = async (e: FormEvent) => {
@@ -116,8 +253,11 @@ export default function PharmacyInventory() {
       <PageHeader title="Medicine Management" subtitle="Pharmacy-only inventory with brand, generic, strength, dosage, SKU, barcode, rack, purchase price, MRP, selling price and batch-wise FEFO stock." action={<Button onClick={load}><RefreshCcw className="h-4 w-4" />Refresh</Button>} />
       {message && <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700">{message}</div>}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 mb-5">
-        <Card className="p-5 xl:col-span-2">
-          <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2"><Pill className="h-5 w-5 text-emerald-600" /> Add pharmacy item</h3>
+        <Card id="medicine-form-card" className="p-5 xl:col-span-2">
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <h3 className="font-bold text-slate-900 flex items-center gap-2"><Pill className="h-5 w-5 text-emerald-600" /> {editingMedicineId ? 'Edit pharmacy item' : 'Add pharmacy item'}</h3>
+            {editingMedicineId && <Button variant="secondary" size="sm" onClick={resetMedicineForm}><X className="h-4 w-4" />Cancel edit</Button>}
+          </div>
           <form onSubmit={saveMedicine} className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Input label="Brand name" value={medicineForm.brand_name} onChange={(v) => setMedicineForm({ ...medicineForm, brand_name: v, name: medicineForm.name || v })} required />
             <Input label="Medicine name" value={medicineForm.name} onChange={(v) => setMedicineForm({ ...medicineForm, name: v })} required />
@@ -138,7 +278,10 @@ export default function PharmacyInventory() {
             <div className="md:col-span-3">
               <ImageDropzone value={medicineForm.image_url} onChange={(url) => setMedicineForm({ ...medicineForm, image_url: url || '' })} label="Medicine photo" />
             </div>
-            <div className="md:col-span-3 flex justify-end"><Button type="submit" disabled={saving}><Save className="h-4 w-4" /> Save medicine</Button></div>
+            <div className="md:col-span-3 flex flex-wrap justify-end gap-2">
+              {editingMedicineId && <Button variant="secondary" onClick={resetMedicineForm} disabled={saving}><X className="h-4 w-4" /> Cancel</Button>}
+              <Button type="submit" disabled={saving}><Save className="h-4 w-4" /> {editingMedicineId ? 'Update medicine' : 'Save medicine'}</Button>
+            </div>
           </form>
         </Card>
 
@@ -160,14 +303,22 @@ export default function PharmacyInventory() {
 
       <Card className="p-5 mb-5">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-          <div><h3 className="font-bold text-slate-900">Medicine list</h3><p className="text-xs text-slate-500">Only pharmacy items are available for pharmacy accounts.</p></div>
-          <div className="relative w-full sm:w-80"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search medicines…" className="w-full rounded-xl border border-slate-200 pl-9 pr-3 py-2 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100" /></div>
+          <div><h3 className="font-bold text-slate-900">Medicine list</h3><p className="text-xs text-slate-500">Only pharmacy items are available for pharmacy accounts. Click Edit to update an existing medicine.</p></div>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+            <Button variant="outline" onClick={printStockReport} disabled={!medicines.length}><Printer className="h-4 w-4" />Print stock report</Button>
+            <div className="relative w-full sm:w-80"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search medicines…" className="w-full rounded-xl border border-slate-200 pl-9 pr-3 py-2 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100" /></div>
+          </div>
+        </div>
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3"><p className="text-xs font-black uppercase tracking-wide text-slate-400">Total medicines</p><p className="mt-1 text-2xl font-black text-slate-900">{medicines.length}</p></div>
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3"><p className="text-xs font-black uppercase tracking-wide text-emerald-500">In stock</p><p className="mt-1 text-2xl font-black text-emerald-700">{inStockMedicines.length}</p></div>
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3"><p className="text-xs font-black uppercase tracking-wide text-rose-500">StockOut</p><p className="mt-1 text-2xl font-black text-rose-700">{stockOutMedicines.length}</p></div>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
-            <thead><tr className="text-left text-xs uppercase tracking-wide text-slate-500 border-b"><th className="py-2">Medicine</th><th>Generic</th><th>Manufacturer</th><th>Stock</th><th>Prices</th><th>Rack</th><th>Status</th></tr></thead>
+            <thead><tr className="text-left text-xs uppercase tracking-wide text-slate-500 border-b"><th className="py-2">Medicine</th><th>Generic</th><th>Manufacturer</th><th>Stock</th><th>Prices</th><th>Rack</th><th>Status</th><th className="text-right">Action</th></tr></thead>
             <tbody>
-              {filtered.map((m) => <tr key={m.id} className="border-b border-slate-100"><td className="py-3"><div className="flex items-center gap-3"><div className="h-10 w-10 rounded-xl bg-emerald-50 overflow-hidden grid place-items-center">{m.image_url ? <img src={m.image_url} className="h-full w-full object-cover" /> : <Pill className="h-5 w-5 text-emerald-600" />}</div><div><p className="font-bold text-slate-900">{m.name}</p><p className="text-xs text-slate-500">{m.category} · {m.strength} · {m.dosage_form}</p><p className="text-[11px] text-slate-400">SKU {m.sku || m.barcode}</p></div></div></td><td>{m.generic_name}</td><td>{m.manufacturer}</td><td>{Number(m.pieces || 0) <= 0 ? <span className="inline-flex items-center gap-1 rounded-md bg-rose-100 px-2 py-0.5 text-xs font-extrabold text-rose-700 ring-1 ring-rose-200"><AlertCircle className="h-3 w-3" />StockOut</span> : <><p className="font-semibold">{unitText(m)}</p><p className="text-xs text-slate-500">{m.pieces || 0} pieces</p></>}</td><td><p className="text-xs">Buy: {formatMoney(Number(m.purchase_price || m.cost || 0), business?.currency || 'BDT')}</p><p className="text-xs">MRP: {formatMoney(Number(m.mrp || 0), business?.currency || 'BDT')}</p><p className="font-bold">Sell: {formatMoney(Number(m.selling_price || m.price || 0), business?.currency || 'BDT')}</p></td><td>{m.rack_location || '-'}</td><td>{Number(m.pieces || 0) <= 0 ? <Badge color="red">StockOut</Badge> : Number(m.pieces || 0) <= Number(m.low_stock_threshold || 20) ? <Badge color="amber">Low stock</Badge> : <Badge color="green">Active</Badge>}</td></tr>)}
+              {filtered.map((m) => <tr key={m.id} className={`border-b border-slate-100 ${editingMedicineId === m.id ? 'bg-emerald-50/60' : ''}`}><td className="py-3"><div className="flex items-center gap-3"><div className={`h-10 w-10 rounded-xl overflow-hidden grid place-items-center ${Number(m.pieces || 0) <= 0 ? 'bg-rose-50' : 'bg-emerald-50'}`}>{m.image_url ? <img src={m.image_url} className="h-full w-full object-cover" /> : <Pill className={`h-5 w-5 ${Number(m.pieces || 0) <= 0 ? 'text-rose-600' : 'text-emerald-600'}`} />}</div><div><p className="font-bold text-slate-900">{m.name}</p><p className="text-xs text-slate-500">{m.category} · {m.strength} · {m.dosage_form}</p><p className="text-[11px] text-slate-400">SKU {m.sku || m.barcode}</p></div></div></td><td>{m.generic_name}</td><td>{m.manufacturer}</td><td>{Number(m.pieces || 0) <= 0 ? <span className="inline-flex items-center gap-1 rounded-md bg-rose-100 px-2 py-0.5 text-xs font-extrabold text-rose-700 ring-1 ring-rose-200"><AlertCircle className="h-3 w-3" />StockOut</span> : <><p className="font-semibold">{unitText(m)}</p><p className="text-xs text-slate-500">{m.pieces || 0} pieces</p></>}</td><td><p className="text-xs">Buy: {formatMoney(Number(m.purchase_price || m.cost || 0), business?.currency || 'BDT')}</p><p className="text-xs">MRP: {formatMoney(Number(m.mrp || 0), business?.currency || 'BDT')}</p><p className="font-bold">Sell: {formatMoney(Number(m.selling_price || m.price || 0), business?.currency || 'BDT')}</p></td><td>{m.rack_location || '-'}</td><td>{Number(m.pieces || 0) <= 0 ? <Badge color="red">StockOut</Badge> : Number(m.pieces || 0) <= Number(m.low_stock_threshold || 20) ? <Badge color="amber">Low stock</Badge> : <Badge color="green">Active</Badge>}</td><td className="text-right"><Button size="sm" variant={editingMedicineId === m.id ? 'primary' : 'outline'} onClick={() => startEditMedicine(m)}><Pencil className="h-3.5 w-3.5" />Edit</Button></td></tr>)}
             </tbody>
           </table>
         </div>
