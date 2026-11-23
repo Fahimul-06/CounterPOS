@@ -149,6 +149,8 @@ const LpgCylinder = mongoose.model('LpgCylinder', schema({
   company: { type: String, required: true, index: true },
   item_type: { type: String, enum: ['refill', 'package'], default: 'refill', index: true },
   price: { type: Number, default: 0 },
+  gas_price: { type: Number, min: 0 },
+  bottle_price: { type: Number, min: 0 },
   cost: { type: Number, default: 0 },
   full_stock: { type: Number, default: 0 },
   empty_stock: { type: Number, default: 0 },
@@ -166,6 +168,9 @@ const LpgCylinderSale = mongoose.model('LpgCylinderSale', schema({
   sold_company: { type: String, default: null },
   sold_item_type: { type: String, enum: ['refill', 'package'], default: 'refill' },
   sold_quantity: { type: Number, default: 0 },
+  empty_return_cylinder_id: { type: mongoose.Schema.Types.ObjectId, ref: 'LpgCylinder', default: null },
+  gas_price: { type: Number, min: 0 },
+  bottle_price: { type: Number, min: 0 },
   empty_return_size: { type: String, default: null },
   empty_return_company: { type: String, default: null },
   empty_return_quantity: { type: Number, default: 0 },
@@ -409,7 +414,7 @@ const PaymentTransaction = mongoose.model('PaymentTransaction', schema({
   business_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Business', index: true },
   tran_id: { type: String, required: true, unique: true, index: true },
   val_id: { type: String, default: null },
-  gateway: { type: String, enum: ['sslcommerz', 'bkash'], default: 'sslcommerz', index: true },
+  gateway: { type: String, enum: ['sslcommerz', 'bkash', 'bangla_qr'], default: 'sslcommerz', index: true },
   bkash_payment_id: { type: String, default: null, index: true },
   bkash_transaction_id: { type: String, default: null },
   plan: { type: String, enum: ['monthly', 'yearly'], required: true },
@@ -1203,107 +1208,185 @@ app.get('/api/lpg/dashboard', auth, async (req, res, next) => {
 });
 
 
+function lpgCheckoutError(status, message) {
+  return Object.assign(new Error(message), { lpgCheckoutStatus: status });
+}
+
+function lpgUnitPrice(cylinder, line, mode) {
+  const validPrice = (value) => Number.isFinite(value) && value >= 0;
+  const gas = cylinder.gas_price ?? (cylinder.item_type === 'refill' ? cylinder.price : undefined);
+  if (line.item_type == null) {
+    // Older clients use the inventory record's original sale type and price.
+    return { unitPrice: cylinder.price };
+  }
+  if (!validPrice(gas) || (mode === 'package' && !validPrice(cylinder.bottle_price))) {
+    throw lpgCheckoutError(409, 'Set the gas and bottle prices in Inventory before selling this cylinder.');
+  }
+  const bottle = mode === 'package' ? cylinder.bottle_price : undefined;
+  const unitPrice = gas + (bottle ?? 0);
+  if (!validPrice(line.unit_price) || Math.abs(unitPrice - line.unit_price) > 0.000001) {
+    throw lpgCheckoutError(409, 'The cylinder price has changed. Reload the inventory and add the cylinder again.');
+  }
+  return { unitPrice, gas, bottle };
+}
+
+async function findLpgReturn(line, sold, businessId, session) {
+  if (line.empty_return_cylinder_id) {
+    if (!mongoose.isValidObjectId(line.empty_return_cylinder_id)) return null;
+    return LpgCylinder.findOne({
+      _id: line.empty_return_cylinder_id, business_id: businessId, is_active: true,
+    }).session(session);
+  }
+
+  const company = String(line.empty_return_company || sold.company).trim();
+  const size = String(line.empty_return_size || sold.cylinder_size).trim();
+  if (company.toLowerCase() === sold.company.trim().toLowerCase()
+      && size.toLowerCase() === sold.cylinder_size.trim().toLowerCase()) return sold;
+  return LpgCylinder.findOne({
+    business_id: businessId, is_active: true, company, cylinder_size: size,
+  }).collation({ locale: 'en', strength: 2 }).sort({ _id: 1 }).session(session);
+}
+
+app.get('/api/lpg/pricing-capabilities', auth, async (req, res, next) => {
+  try {
+    await requireLpgBusiness(req.user.id);
+    res.json({ data: { split_pricing: true, return_cylinder_id: true } });
+  } catch (err) { next(err); }
+});
+
 app.post('/api/lpg/pos/sale', auth, async (req, res, next) => {
+  let session;
   try {
     const business = await requireLpgBusiness(req.user.id);
     const items = Array.isArray(req.body.items) ? req.body.items : [];
-    if (!items.length) return res.status(400).json({ message: 'Cart is empty.' });
+    if (!items.length) throw lpgCheckoutError(400, 'Cart is empty.');
     const paymentMethod = String(req.body.payment_method || 'cash').toLowerCase();
     const isDue = paymentMethod === 'due';
-    const discount = Math.max(Number(req.body.discount || 0), 0);
-    let customerId = req.body.customer_id || null;
+    const discount = Number(req.body.discount ?? 0);
+    if (!Number.isFinite(discount) || discount < 0) throw lpgCheckoutError(400, 'Invalid discount.');
     const customerName = String(req.body.customer_name || '').trim() || null;
     const customerPhone = String(req.body.customer_phone || '').trim() || null;
     const customerAddress = String(req.body.customer_address || '').trim() || null;
     if (isDue && (!customerName || !customerPhone)) {
-      return res.status(400).json({ message: 'Due sale requires customer name and phone number.' });
+      throw lpgCheckoutError(400, 'Due sale requires customer name and phone number.');
     }
-    const lpgRows = [];
-    const saleItems = [];
-    let subtotal = 0;
 
-    for (const line of items) {
-      const cylinder = await LpgCylinder.findOne({ _id: line.cylinder_id, business_id: req.user.id, is_active: true });
-      if (!cylinder) return res.status(404).json({ message: 'Cylinder item not found.' });
-      const qty = Math.max(Number(line.quantity || 0), 0);
-      if (qty <= 0) return res.status(400).json({ message: 'Invalid cylinder quantity.' });
-      if (Number(cylinder.full_stock || 0) < qty) return res.status(409).json({ message: `Not enough full cylinders for ${cylinder.company} ${cylinder.cylinder_size}.` });
-      const emptyQty = Math.max(Number(line.empty_return_quantity || 0), 0);
-      const unitPrice = Number(line.unit_price || cylinder.price || 0);
-      const lineTotal = qty * unitPrice;
-      cylinder.full_stock = Number(cylinder.full_stock || 0) - qty;
-      cylinder.empty_stock = Number(cylinder.empty_stock || 0) + emptyQty;
-      await cylinder.save();
-      subtotal += lineTotal;
-      const itemName = `${cylinder.company} ${cylinder.cylinder_size} ${cylinder.item_type === 'package' ? 'Package' : 'Refill'}`;
-      saleItems.push({ product_id: cylinder._id, name: itemName, unit_price: unitPrice, quantity: qty, line_total: lineTotal });
-      lpgRows.push({
-        business_id: req.user.id,
-        sold_cylinder_id: cylinder._id,
-        sold_size: cylinder.cylinder_size,
-        sold_company: cylinder.company,
-        sold_item_type: cylinder.item_type,
-        sold_quantity: qty,
-        empty_return_size: String(line.empty_return_size || cylinder.cylinder_size || '').trim() || null,
-        empty_return_company: String(line.empty_return_company || cylinder.company || '').trim() || null,
-        empty_return_quantity: emptyQty,
-        unit_price: unitPrice,
-        line_total: lineTotal,
+    session = await mongoose.startSession();
+    const data = await session.withTransaction(async () => {
+      const lpgRows = [];
+      const saleItems = [];
+      let subtotal = 0;
+
+      for (const line of items) {
+        if (!line || !mongoose.isValidObjectId(line.cylinder_id)) {
+          throw lpgCheckoutError(400, 'Invalid cylinder item.');
+        }
+        const qty = Number(line.quantity);
+        const emptyQty = Number(line.empty_return_quantity ?? 0);
+        if (!Number.isSafeInteger(qty) || qty <= 0 || !Number.isSafeInteger(emptyQty)
+            || emptyQty < 0 || emptyQty > qty) {
+          throw lpgCheckoutError(400, 'Invalid cylinder or return quantity.');
+        }
+        const cylinder = await LpgCylinder.findOne({
+          _id: line.cylinder_id, business_id: req.user.id, is_active: true,
+        }).session(session);
+        if (!cylinder) throw lpgCheckoutError(404, 'Cylinder item not found.');
+        if (cylinder.full_stock < qty) {
+          throw lpgCheckoutError(409, `Not enough full cylinders for ${cylinder.company} ${cylinder.cylinder_size}.`);
+        }
+        const mode = line.item_type ?? cylinder.item_type;
+        if (!['refill', 'package'].includes(mode)) throw lpgCheckoutError(400, 'Invalid sale type.');
+        const { unitPrice, gas, bottle } = lpgUnitPrice(cylinder, line, mode);
+        const returned = emptyQty ? await findLpgReturn(line, cylinder, req.user.id, session) : null;
+        if (emptyQty && !returned) throw lpgCheckoutError(400, 'Returned cylinder is missing from inventory.');
+        const lineTotal = qty * unitPrice;
+        cylinder.full_stock -= qty;
+        if (returned && returned._id.equals(cylinder._id)) cylinder.empty_stock += emptyQty;
+        await cylinder.save({ session });
+        if (returned && !returned._id.equals(cylinder._id)) {
+          await LpgCylinder.updateOne({ _id: returned._id }, { $inc: { empty_stock: emptyQty } }, { session });
+        }
+        subtotal += lineTotal;
+        saleItems.push({
+          product_id: cylinder._id,
+          name: `${cylinder.company} ${cylinder.cylinder_size} ${mode === 'package' ? 'Package' : 'Refill'}`,
+          unit_price: unitPrice, quantity: qty, line_total: lineTotal,
+        });
+        lpgRows.push({
+          business_id: req.user.id, sold_cylinder_id: cylinder._id,
+          sold_size: cylinder.cylinder_size, sold_company: cylinder.company,
+          sold_item_type: mode, sold_quantity: qty,
+          empty_return_cylinder_id: returned?._id ?? null,
+          empty_return_size: returned?.cylinder_size ?? null,
+          empty_return_company: returned?.company ?? null,
+          empty_return_quantity: emptyQty, unit_price: unitPrice, line_total: lineTotal,
+          gas_price: gas, bottle_price: bottle,
+        });
+      }
+
+      const taxable = Math.max(subtotal - discount, 0);
+      const useCurrentCharges = items.some((line) => line.item_type != null);
+      const percent = (rate) => useCurrentCharges ? taxable * Math.max(Number(rate || 0), 0) / 100 : 0;
+      const tax = percent(business.tax_rate);
+      const vat = percent(business.vat_rate);
+      const serviceCharge = percent(business.service_charge_rate);
+      const delivery = useCurrentCharges ? Math.max(Number(business.delivery_charge || 0), 0) : 0;
+      const total = taxable + tax + vat + serviceCharge + delivery;
+      let customer = null;
+      if (isDue) {
+        if (mongoose.isValidObjectId(req.body.customer_id)) {
+          customer = await Customer.findOne({ _id: req.body.customer_id, business_id: req.user.id }).session(session);
+        }
+        if (!customer) {
+          customer = await Customer.findOne({ business_id: req.user.id, phone: customerPhone }).session(session);
+        }
+        if (!customer) customer = new Customer({ business_id: req.user.id, due_balance: 0, is_active: true });
+        customer.name = customerName;
+        customer.phone = customerPhone;
+        customer.address = customerAddress || customer.address;
+        customer.due_balance = Number(customer.due_balance || 0) + total;
+        await customer.save({ session });
+      }
+
+      const sale = new Sale({
+        business_id: req.user.id, subtotal, discount, total, tax, vat,
+        service_charge: serviceCharge, delivery_charge: delivery,
+        payment_method: paymentMethod, status: 'completed', order_type: 'lpg_cylinder',
+        customer_id: customer?._id ?? null, customer_name: customer?.name || customerName,
+        customer_phone: customer?.phone || customerPhone, customer_address: customer?.address || customerAddress,
+        paid_amount: isDue ? 0 : total, due_amount: isDue ? total : 0,
+        service_area: business.service_area || null, tax_zone: business.tax_zone || null,
+        note: req.body.note || null, created_by: req.user.id,
       });
-    }
-
-    const total = Math.max(subtotal - discount, 0);
-    let customerDoc = null;
-    if (isDue) {
-      if (customerId) {
-        customerDoc = await Customer.findOne({ _id: customerId, business_id: req.user.id });
+      await sale.save({ session });
+      const rows = await SaleItem.insertMany(saleItems.map((row) => ({
+        ...row, sale_id: sale._id, business_id: req.user.id,
+      })), { session });
+      const details = await LpgCylinderSale.insertMany(lpgRows.map((row) => ({
+        ...row, sale_id: sale._id,
+      })), { session });
+      if (customer) {
+        const due = new CustomerDue({
+          business_id: req.user.id, customer_id: customer._id, sale_id: sale._id,
+          amount: total, paid: 0, balance: total, status: 'open',
+        });
+        await due.save({ session });
       }
-      if (!customerDoc && customerPhone) {
-        customerDoc = await Customer.findOne({ business_id: req.user.id, phone: customerPhone });
-      }
-      if (!customerDoc) {
-        customerDoc = await Customer.create({ business_id: req.user.id, name: customerName, phone: customerPhone, address: customerAddress, due_balance: 0, is_active: true });
-      } else {
-        customerDoc.name = customerName || customerDoc.name;
-        customerDoc.phone = customerPhone || customerDoc.phone;
-        customerDoc.address = customerAddress || customerDoc.address;
-        customerDoc.is_active = true;
-        await customerDoc.save();
-      }
-      customerId = customerDoc._id;
-    }
-
-    const sale = await Sale.create({
-      business_id: req.user.id,
-      subtotal,
-      discount,
-      total,
-      payment_method: paymentMethod,
-      status: 'completed',
-      order_type: 'lpg_cylinder',
-      customer_id: customerId || null,
-      customer_name: customerDoc?.name || customerName,
-      customer_phone: customerDoc?.phone || customerPhone,
-      customer_address: customerDoc?.address || customerAddress,
-      paid_amount: isDue ? 0 : total,
-      due_amount: isDue ? total : 0,
-      service_area: business.service_area || null,
-      tax_zone: business.tax_zone || null,
-      note: req.body.note || null,
-      created_by: req.user.id,
+      return { sale: clean(sale), items: rows.map(clean), lpg_items: details.map(clean) };
     });
-    await SaleItem.insertMany(saleItems.map((x) => ({ ...x, sale_id: sale._id, business_id: req.user.id })));
-    await LpgCylinderSale.insertMany(lpgRows.map((x) => ({ ...x, sale_id: sale._id })));
-    if (isDue && customerDoc) {
-      await CustomerDue.create({ business_id: req.user.id, customer_id: customerDoc._id, sale_id: sale._id, amount: total, paid: 0, balance: total, status: 'open' });
-      customerDoc.due_balance = Number(customerDoc.due_balance || 0) + total;
-      await customerDoc.save();
-    }
-    await audit({ business_id: req.user.id, user_id: req.user.id, action: isDue ? 'lpg_pos_due_sale' : 'lpg_pos_sale', resource: 'sales', resource_id: sale._id, details: { total, items: saleItems.length, payment_method: paymentMethod }, req });
-    const rows = await SaleItem.find({ sale_id: sale._id, business_id: req.user.id });
-    const lpgDetails = await LpgCylinderSale.find({ sale_id: sale._id, business_id: req.user.id });
-    res.status(201).json({ data: { sale: clean(sale), items: rows.map(clean), lpg_items: lpgDetails.map(clean) } });
-  } catch (err) { next(err); }
+
+    await audit({
+      business_id: req.user.id, user_id: req.user.id,
+      action: isDue ? 'lpg_pos_due_sale' : 'lpg_pos_sale', resource: 'sales',
+      resource_id: data.sale.id, details: { total: data.sale.total, items: data.items.length }, req,
+    });
+    res.status(201).json({ data });
+  } catch (err) {
+    if (err.lpgCheckoutStatus) return res.status(err.lpgCheckoutStatus).json({ message: err.message });
+    next(err);
+  } finally {
+    if (session) await session.endSession();
+  }
 });
 
 app.get('/api/subscription', auth, async (req, res, next) => {
@@ -1312,6 +1395,39 @@ app.get('/api/subscription', auth, async (req, res, next) => {
     if (!business) return res.status(404).json({ message: 'Business profile not found.' });
     const transactions = await PaymentTransaction.find({ business_id: req.user.id }).sort({ created_at: -1 }).limit(10);
     res.json({ data: { business: clean(business), subscription: businessSubscriptionInfo(business), transactions: transactions.map(clean) } });
+  } catch (err) { next(err); }
+});
+
+
+app.get('/api/subscription/bangla-qr', auth, async (req, res, next) => {
+  try {
+    const plan = String(req.query.plan || '').toLowerCase();
+    const config = getPlanConfig(plan);
+    if (!config) return res.status(400).json({ message: 'Select monthly or yearly plan.' });
+    const qrUrl = plan === 'yearly' ? process.env.BANGLA_QR_YEARLY_URL : process.env.BANGLA_QR_MONTHLY_URL;
+    const amount = Number(plan === 'yearly' ? (process.env.BANGLA_QR_YEARLY_AMOUNT || config.amount) : (process.env.BANGLA_QR_MONTHLY_AMOUNT || config.amount));
+    res.json({ data: {
+      plan, amount, currency: 'BDT', qr_url: qrUrl || '',
+      receiver_name: process.env.BANGLA_QR_RECEIVER_NAME || 'Janata Bank Bangla QR',
+      instructions: process.env.BANGLA_QR_INSTRUCTIONS || 'Scan this Bangla QR, pay the exact subscription amount, then submit the transaction/reference ID for verification.'
+    }});
+  } catch (err) { next(err); }
+});
+
+app.post('/api/subscription/bangla-qr/submit', auth, async (req, res, next) => {
+  try {
+    const plan = String(req.body.plan || '').toLowerCase();
+    const config = getPlanConfig(plan);
+    if (!config) return res.status(400).json({ message: 'Select monthly or yearly plan.' });
+    const transactionId = String(req.body.transaction_id || req.body.trx_id || '').trim();
+    if (transactionId.length < 3) return res.status(400).json({ message: 'Transaction/reference ID is required after QR payment.' });
+    const amount = Number(req.body.amount || config.amount);
+    const tranId = `BQR-SUB-${req.user.id}-${Date.now()}`;
+    const transaction = await PaymentTransaction.create({
+      business_id: req.user.id, tran_id: tranId, plan, amount, currency: 'BDT', gateway: 'bangla_qr', status: 'pending', created_by: req.user.id,
+      gateway_response: { transaction_id: transactionId, sender: req.body.sender || null, qr_url: req.body.qr_url || null, submitted_at: new Date() }
+    });
+    res.status(201).json({ message: 'Bangla QR payment submitted. Subscription will activate after admin verification.', data: clean(transaction) });
   } catch (err) { next(err); }
 });
 
