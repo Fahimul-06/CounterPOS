@@ -1720,6 +1720,20 @@ app.get('/api/admin/overview',async(req,res,next)=>{
  res.json({data:{totals,rows,payments,listed:rows.length}});
  }catch(e){next(e);}
 });
+// One authenticated round trip for the mobile dashboard; same limits and tenant scope as legacy queries.
+app.get('/api/mobile/dashboard', auth, paidAccess, async (req,res,next)=>{
+  try {
+    const category=req.business.category;
+    const Inventory=category==='pharmacy'?Medicine:category==='lpg_cylinder'?LpgCylinder:category==='clothing'?Dress:Product;
+    const q={business_id:req.user.id};
+    const [inventory,sales,expenses,customers]=await Promise.all([
+      Inventory.find(q).sort({created_at:-1}), Sale.find(q).sort({created_at:-1}).limit(500),
+      Expense.find(q).sort({created_at:-1}).limit(500), Customer.find(q).sort({created_at:-1}).limit(200)
+    ]);
+    res.json({data:{inventory:inventory.map(clean),sales:sales.map(clean),expenses:expenses.map(clean),customers:customers.map(clean)}});
+  }catch(e){next(e);}
+});
+
 app.get('/api/data/:table', auth, dataAccess, async (req, res, next) => {
   try {
     const { table } = req.params;
@@ -1739,7 +1753,11 @@ app.get('/api/data/:table', auth, dataAccess, async (req, res, next) => {
     let rows = docs.map(clean);
     if(table==='payment_transactions') rows=rows.map(({gateway_response,...x})=>x);
     if (table === 'sales' && String(req.query.select || '').includes('sale_items')) {
-      rows = await Promise.all(rows.map(async (sale) => ({ ...sale, sale_items: (await SaleItem.find({ sale_id: sale.id, business_id: req.user.id })).map(clean) })));
+      // Fetch line items in one tenant-scoped query instead of one query per invoice.
+      const items=rows.length?await SaleItem.find({sale_id:{$in:rows.map(s=>s.id)},business_id:req.user.id}):[];
+      const grouped=new Map();
+      for(const doc of items){const item=clean(doc);const list=grouped.get(item.sale_id)||[];list.push(item);grouped.set(item.sale_id,list);}
+      rows=rows.map(sale=>({...sale,sale_items:grouped.get(sale.id)||[]}));
     }
     res.json({ data: req.query.single === 'true' ? (rows[0] || null) : rows });
   } catch (err) { next(err); }

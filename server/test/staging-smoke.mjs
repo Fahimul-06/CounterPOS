@@ -21,6 +21,15 @@ const repeat=(await call('/pos/sale','POST',body,a,201)).data;assert.equal(first
 await call('/pos/sale','POST',{...body,request_id:randomUUID()},a,409);
 assert.equal((await call(`/data/products?id=${product.id}&single=true`,'GET',undefined,a)).data.stock,1);
 await call('/data/sales','POST',{total:1},a,403);
+const dash=(await call('/mobile/dashboard','GET',undefined,a)).data;
+assert.equal(dash.inventory.find(x=>x.id===product.id).stock,1);
+assert.equal(dash.sales.filter(x=>x.id===first.sale.id).length,1);
+const otherDash=(await call('/mobile/dashboard','GET',undefined,b)).data;
+assert.equal(otherDash.inventory.some(x=>x.id===product.id),false);
+assert.equal(otherDash.sales.some(x=>x.id===first.sale.id),false);
+await call('/mobile/dashboard','GET',undefined,null,401);
+const joined=(await call('/data/sales?select=*,sale_items(*)','GET',undefined,a)).data;
+assert.equal(joined.find(x=>x.id===first.sale.id).sale_items.length,1);
 const lpg=await register('lpg_cylinder');
 async function cylinder(company){return (await call('/data/lpg_cylinders','POST',{company,cylinder_size:'12 kg',price:1450,gas_price:1450,bottle_price:1800,full_stock:3,empty_stock:0,item_type:'refill'},lpg,201)).data;}
 const x=await cylinder('Test A'), y=await cylinder('Test B');
