@@ -75,7 +75,7 @@ export default function SignUp() {
     if (!form.category) return 'Please select a business category.';
     if (!form.address.trim()) return 'Please enter your business address.';
     if (!form.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return 'Please enter a valid email address.';
-    if (form.password.length < 6) return 'Password must be at least 6 characters.';
+    if (form.password.length < 8) return 'Password must be at least 8 characters.';
     if (form.password !== form.confirmPassword) return 'Passwords do not match.';
     return null;
   };

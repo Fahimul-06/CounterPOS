@@ -248,14 +248,16 @@ function setAuth(token: string | null, user: User | null) {
 export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers || {});
   const token = getToken();
-  if (token) headers.set('Authorization', `Bearer ${token}`);
+  if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
   if (!(options.body instanceof FormData) && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
 
   const url = `${API_URL}${path}`;
-  const res = await fetch(url, { ...options, headers });
+  const res = await fetch(url, { ...options, headers, signal:options.signal || AbortSignal.timeout(30000) });
   const contentType = res.headers.get('content-type') || '';
   const json = contentType.includes('application/json') ? await res.json().catch(() => ({})) : {};
   if (!res.ok) {
+    if(res.status===402) window.dispatchEvent(new Event('counterpos-subscription-required'));
+    if(res.status===401 && token && !path.startsWith('/auth/login') && !path.startsWith('/admin/')) {setAuth(null,null);listeners.forEach(cb=>cb('SIGNED_OUT',null));}
     const details = API_URL === '/api'
       ? 'Frontend VITE_API_URL is missing. Set it to your Render backend URL ending with /api, then redeploy the frontend.'
       : `Request failed: ${res.status} ${res.statusText}`;
@@ -434,8 +436,8 @@ export const supabase = {
             const form = new FormData();
             form.append('file', file);
             form.append('path', path);
-            await apiRequest('/uploads', { method: 'POST', body: form });
-            return { data: { path }, error: null };
+            const uploaded=await apiRequest<{path:string}>('/uploads',{method:'POST',body:form});
+            return {data:{path:uploaded.path},error:null};
           } catch (err) {
             return { data: null, error: err instanceof Error ? err : new Error('Upload failed') };
           }

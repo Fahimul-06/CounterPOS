@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import {
   Banknote,
   Barcode,
@@ -50,6 +50,8 @@ const paymentLabels: Record<string, string> = {
 };
 
 export default function PharmacyPOS() {
+  const checkoutRetry=useRef<{payload:string;id:string}|null>(null);
+
   const { business } = useAuth();
   const [medicines, setMedicines] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
@@ -156,7 +158,10 @@ export default function PharmacyPOS() {
         due_amount: payment === 'due' ? total : 0,
         items: cart.map((l) => ({ medicine_id: l.medicine.id, quantity: l.quantity, unit: l.unit })),
       };
-      const res = await apiRequest<{ data: any }>('/pharmacy/pos/sale', { method: 'POST', body: JSON.stringify(payload) });
+      const serialized=JSON.stringify(payload);
+      if(checkoutRetry.current?.payload!==serialized) checkoutRetry.current={payload:serialized,id:crypto.randomUUID()};
+      const res = await apiRequest<{ data: any }>('/pharmacy/pos/sale', { method: 'POST', body: JSON.stringify({...payload,request_id:checkoutRetry.current!.id}) });
+      checkoutRetry.current=null;
       setReceipt(res.data);
       setCart([]); setDiscount('0'); setCustomerId(''); setUseNewDueCustomer(false); setNewCustomerName(''); setNewCustomerPhone('');
       await load();

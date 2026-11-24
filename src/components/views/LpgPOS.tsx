@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { AlertCircle, Banknote, CreditCard, Flame, Minus, Plus, Printer, Receipt, Search, ShoppingCart, Trash2, UserPlus, Wallet } from 'lucide-react';
 import { apiRequest, supabase } from '../../lib/supabase';
 import type { LpgCylinder, Sale, SaleItem, LpgCylinderSale, Customer } from '../../lib/supabase';
@@ -24,6 +24,8 @@ const gasPrice = (c: LpgCylinder) => c.gas_price ?? (c.item_type === 'refill' ? 
 const unitPrice = (l: CartLine) => gasPrice(l.cylinder) + (l.mode === 'package' ? (l.cylinder.bottle_price ?? NaN) : 0);
 
 export default function LpgPOS() {
+  const checkoutRetry=useRef<{payload:string;id:string}|null>(null);
+
   const { business } = useAuth();
   const [items, setItems] = useState<LpgCylinder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -155,7 +157,10 @@ export default function LpgPOS() {
           empty_return_company: line.empty_return_company,
         })),
       };
-      const res = await apiRequest<{ data: CompletedSale }>('/lpg/pos/sale', { method: 'POST', body: JSON.stringify(body) });
+      const serialized=JSON.stringify(body);
+      if(checkoutRetry.current?.payload!==serialized) checkoutRetry.current={payload:serialized,id:crypto.randomUUID()};
+      const res = await apiRequest<{ data: CompletedSale }>('/lpg/pos/sale', { method: 'POST', body: JSON.stringify({...body,request_id:checkoutRetry.current!.id}) });
+      checkoutRetry.current=null;
       setCompleted(res.data);
       setCart([]);
       setDiscount('');

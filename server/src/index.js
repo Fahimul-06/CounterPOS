@@ -13,7 +13,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, '..');
-const UPLOAD_ROOT = path.join(ROOT, 'uploads');
+const UPLOAD_ROOT = process.env.UPLOAD_ROOT || path.join(ROOT,'uploads');
 fs.mkdirSync(UPLOAD_ROOT, { recursive: true });
 
 const app = express();
@@ -23,6 +23,15 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(UPLOAD_ROOT));
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_me';
+const production = process.env.NODE_ENV === 'production';
+if (production && (JWT_SECRET.length < 48 || !process.env.MONGODB_URI || !process.env.CLIENT_URL || !process.env.API_PUBLIC_URL)) throw new Error('Production requires a strong JWT_SECRET, MONGODB_URI, CLIENT_URL and API_PUBLIC_URL');
+app.disable('x-powered-by');
+app.set('trust proxy', 1);
+app.use((req,res,next) => { res.set('X-Content-Type-Options','nosniff'); res.set('Referrer-Policy','no-referrer'); if(req.path.startsWith('/api/')) res.set('Cache-Control','no-store'); next(); });
+const authAttempts = new Map();
+setInterval(() => { for (const [k,v] of authAttempts) if(v.until <= Date.now()) authAttempts.delete(k); },60000).unref();
+app.use('/api/auth', (req,res,next) => { if(req.method !== 'POST') return next(); const key=req.ip; const now=Date.now(); let v=authAttempts.get(key); if(!v || v.until<=now) {v={count:0,until:now+60000};authAttempts.set(key,v);} if(++v.count>20) return res.status(429).json({message:'Too many requests. Try again later.'}); next(); });
+
 
 const baseOpts = { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' }, versionKey: false };
 const toJSON = {
@@ -44,6 +53,7 @@ function schema(def, opts = {}) {
 const User = mongoose.model('User', schema({
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   password_hash: { type: String, required: true },
+  token_version:{type:Number,default:0},
   reset_token_hash: { type: String, default: null },
   reset_token_expires_at: { type: Date, default: null },
 }));
@@ -67,7 +77,7 @@ const Business = mongoose.model('Business', schema({
   subscription_plan: { type: String, enum: ['trial', 'monthly', 'yearly'], default: 'trial' },
   subscription_status: { type: String, enum: ['trialing', 'active', 'expired', 'cancelled'], default: 'trialing' },
   trial_starts_at: { type: Date, default: Date.now },
-  trial_ends_at: { type: Date, default: () => new Date(Date.now() + 15 * 24 * 60 * 60 * 1000) },
+  trial_ends_at: { type: Date, default: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
   subscription_ends_at: { type: Date, default: null },
   subscription_last_payment_at: { type: Date, default: null },
 }));
@@ -426,31 +436,47 @@ const PaymentTransaction = mongoose.model('PaymentTransaction', schema({
   created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }));
 
+const checkoutSchema=schema({business_id:{type:mongoose.Schema.Types.ObjectId,required:true},key:{type:String,required:true},hash:String,result:mongoose.Schema.Types.Mixed});
+checkoutSchema.index({business_id:1,key:1},{unique:true});
+const CheckoutRequest=mongoose.model('CheckoutRequest',checkoutSchema);
 const models = { businesses: Business, products: Product, medicines: Medicine, dresses: Dress, lpg_cylinders: LpgCylinder, lpg_cylinder_sales: LpgCylinderSale, sales: Sale, sale_items: SaleItem, expenses: Expense, branches: Branch, medicine_batches: MedicineBatch, suppliers: Supplier, purchases: Purchase, purchase_items: PurchaseItem, supplier_payments: SupplierPayment, purchase_returns: PurchaseReturn, customers: Customer, prescriptions: Prescription, customer_dues: CustomerDue, sales_returns: SalesReturn, stock_movements: StockMovement, stock_adjustments: StockAdjustment, cash_registers: CashRegister, stock_transfers: StockTransfer, role_permissions: RolePermission, audit_logs: AuditLog, payment_transactions: PaymentTransaction };
 
+function checkoutIdentity(req) {
+ const key=String(req.body.request_id||''); if(!/^[a-zA-Z0-9-]{16,100}$/.test(key)) throw Object.assign(new Error('Checkout request ID required'),{status:400});
+ return {key,hash:crypto.createHash('sha256').update(req.path+JSON.stringify(req.body)).digest('hex')};
+}
+async function priorCheckout(req,identity,session){ const old=await CheckoutRequest.findOne({business_id:req.user.id,key:identity.key}).session(session); if(old && old.hash!==identity.hash) throw Object.assign(new Error('Checkout request changed'),{status:409}); return old?.result; }
+async function storeCheckout(req,identity,result,session){ await CheckoutRequest.create([{business_id:req.user.id,...identity,result}],{session}); return result; }
 function sign(user) {
-  return jwt.sign({ id: String(user._id), email: user.email }, JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign({ id: String(user._id), email: user.email,version:user.token_version||0 }, JWT_SECRET, { expiresIn: '7d',algorithm:'HS256' });
 }
 
-function auth(req, res, next) {
+async function auth(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : '';
   if (!token) return res.status(401).json({ message: 'Unauthorized' });
   try {
-    req.user = jwt.verify(token, JWT_SECRET);
+    req.user = jwt.verify(token, JWT_SECRET,{algorithms:['HS256']});
+    if(!mongoose.isValidObjectId(req.user.id)) throw new Error('Invalid user');
+    const user=await User.findById(req.user.id).select('token_version');
+    if(!user || (user.token_version||0)!==(req.user.version||0)) throw new Error('Invalid session');
     next();
   } catch {
     res.status(401).json({ message: 'Invalid or expired token' });
   }
 }
 
+async function paidAccess(req,res,next) {
+  try { const b=await Business.findById(req.user.id); if(!b) return res.status(404).json({message:'Business not found'}); if(!businessSubscriptionInfo(b).active) return res.status(402).json({message:'Subscription required',code:'SUBSCRIPTION_REQUIRED'}); req.business=b; next(); } catch(e){next(e);}
+}
+function dataAccess(req,res,next){ if(req.method==='GET' && req.params.table==='businesses') return next(); return paidAccess(req,res,next); }
 function getPlanConfig(plan) {
   const prices = {
-    monthly: Number(process.env.SUBSCRIPTION_MONTHLY_PRICE || 999),
-    yearly: Number(process.env.SUBSCRIPTION_YEARLY_PRICE || 9999),
+    monthly: Number(process.env.SUBSCRIPTION_MONTHLY_PRICE || 599),
+    yearly: Number(process.env.SUBSCRIPTION_YEARLY_PRICE || 9000),
   };
   const days = { monthly: 30, yearly: 365 };
-  if (!prices[plan]) return null;
+  if (!Object.hasOwn(prices,plan) || !Number.isFinite(prices[plan]) || prices[plan]<=0) return null;
   return { amount: prices[plan], days: days[plan] };
 }
 
@@ -458,12 +484,12 @@ function businessSubscriptionInfo(business) {
   const now = new Date();
   const trialEnds = business?.trial_ends_at ? new Date(business.trial_ends_at) : null;
   const subscriptionEnds = business?.subscription_ends_at ? new Date(business.subscription_ends_at) : null;
-  const paidActive = subscriptionEnds && subscriptionEnds.getTime() > now.getTime();
-  const trialActive = !paidActive && trialEnds && trialEnds.getTime() > now.getTime();
+  const paidActive = business?.subscription_status === 'active' && subscriptionEnds && subscriptionEnds.getTime() > now.getTime();
+  const trialActive = business?.subscription_status === 'trialing' && !paidActive && trialEnds && trialEnds.getTime() > now.getTime();
   const active = Boolean(paidActive || trialActive);
   const status = paidActive ? 'active' : trialActive ? 'trialing' : 'expired';
   const endsAt = paidActive ? subscriptionEnds : trialEnds;
-  const daysRemaining = endsAt ? Math.max(0, Math.ceil((endsAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000))) : 0;
+  const daysRemaining = endsAt && Number.isFinite(endsAt.getTime()) ? Math.max(0, Math.ceil((endsAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000))) : 0;
   return {
     active,
     status,
@@ -571,29 +597,22 @@ function isBkashSuccess(payload) {
 }
 
 async function activateSubscription(transaction, gatewayResponse = {}) {
-  if (!transaction || transaction.status === 'paid') return null;
-  const config = getPlanConfig(transaction.plan);
-  if (!config) throw new Error('Invalid subscription plan.');
-  const now = new Date();
-  const current = await Business.findById(transaction.business_id);
-  const currentEnd = current?.subscription_ends_at && new Date(current.subscription_ends_at) > now
-    ? new Date(current.subscription_ends_at)
-    : now;
-  const newEnd = new Date(currentEnd.getTime() + config.days * 24 * 60 * 60 * 1000);
-  await Business.findByIdAndUpdate(transaction.business_id, {
-    subscription_plan: transaction.plan,
-    subscription_status: 'active',
-    subscription_ends_at: newEnd,
-    subscription_last_payment_at: now,
-  });
-  transaction.status = 'paid';
-  transaction.paid_at = now;
-  transaction.gateway_response = gatewayResponse;
-  if (gatewayResponse?.val_id) transaction.val_id = gatewayResponse.val_id;
-  if (gatewayResponse?.trxID) transaction.bkash_transaction_id = gatewayResponse.trxID;
-  if (gatewayResponse?.transactionId) transaction.bkash_transaction_id = gatewayResponse.transactionId;
-  await transaction.save();
-  return newEnd;
+  if (!transaction) return null;
+  const session = await mongoose.startSession();
+  try { return await session.withTransaction(async()=>{
+    const currentTx=await PaymentTransaction.findById(transaction._id).session(session);
+    if(!currentTx || currentTx.status==='paid') return null;
+    const config=getPlanConfig(currentTx.plan); if(!config) throw new Error('Invalid plan');
+    const now=new Date(); const current=await Business.findById(currentTx.business_id).session(session);
+    if(!current) throw new Error('Business missing');
+    const end=current.subscription_ends_at > now ? current.subscription_ends_at : now;
+    const newEnd=new Date(end.getTime()+config.days*86400000);
+    await Business.updateOne({_id:current._id},{$set:{subscription_plan:currentTx.plan,subscription_status:'active',subscription_ends_at:newEnd,subscription_last_payment_at:now}},{session});
+    currentTx.status='paid'; currentTx.paid_at=now; currentTx.gateway_response=gatewayResponse;
+    if(gatewayResponse?.val_id) currentTx.val_id=gatewayResponse.val_id;
+    if(gatewayResponse?.trxID) currentTx.bkash_transaction_id=gatewayResponse.trxID;
+    await currentTx.save({session}); return newEnd;
+  }); } finally {await session.endSession();}
 }
 
 function clean(doc) {
@@ -624,17 +643,20 @@ function withBusiness(payload, userId) {
   return { ...payload, business_id: userId };
 }
 
-app.get('/api/health', (_req, res) => res.json({ ok: true }));
+app.get('/api/health', (_req,res)=>res.status(mongoose.connection.readyState===1?200:503).json({ok:mongoose.connection.readyState===1}));
 
 app.post('/api/auth/register', async (req, res, next) => {
   try {
     const { email, password, owner_name, phone, business_name, category, address } = req.body;
-    if (!email || !password) return res.status(400).json({ message: 'Email and password are required.' });
+    if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || typeof password !== 'string' || password.length < 8 || Buffer.byteLength(password)>72 || typeof business_name !== 'string' || !business_name.trim() || !['restaurant','shop','pharmacy','departmental_store','clothing','lpg_cylinder'].includes(category)) return res.status(400).json({message:'Valid email, business name, category and password (8 characters minimum, 72 bytes maximum) required.'});
     if (await User.findOne({ email: email.toLowerCase() })) return res.status(409).json({ message: 'Email is already registered.' });
-    const user = await User.create({ email, password_hash: await bcrypt.hash(password, 10) });
+    const session = await mongoose.startSession();
+    let user;
+    try { const hash = await bcrypt.hash(password, 12); await session.withTransaction(async()=>{
+    [user] = await User.create([{ email, password_hash: hash }], {session});
     const trialStart = new Date();
-    const trialEnd = new Date(trialStart.getTime() + 15 * 24 * 60 * 60 * 1000);
-    await Business.create({
+    const trialEnd = new Date(trialStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+    await Business.create([{
       _id: user._id,
       owner_name,
       phone,
@@ -646,13 +668,7 @@ app.post('/api/auth/register', async (req, res, next) => {
       subscription_status: 'trialing',
       trial_starts_at: trialStart,
       trial_ends_at: trialEnd,
-    });
-    if (category === 'pharmacy') {
-      await seedPharmacyMockData(user._id, user._id, { skipIfExists: true });
-    }
-    if (category === 'lpg_cylinder') {
-      await seedLpgMockData(user._id, user._id, { skipIfExists: true });
-    }
+    }], {session}); }); } finally { await session.endSession(); }
     res.status(201).json({ token: sign(user), user: { id: String(user._id), email: user.email } });
   } catch (err) { next(err); }
 });
@@ -668,6 +684,7 @@ app.post('/api/auth/login', async (req, res, next) => {
 
 app.post('/api/auth/forgot-password', async (req, res, next) => {
   try {
+    if (production) return res.status(503).json({message:'Contact support for password recovery; email delivery is not configured.'});
     const email = String(req.body.email || '').toLowerCase().trim();
     if (!email) return res.status(400).json({ message: 'Email is required.' });
     const user = await User.findOne({ email });
@@ -678,7 +695,7 @@ app.post('/api/auth/forgot-password', async (req, res, next) => {
     user.reset_token_expires_at = new Date(Date.now() + 30 * 60 * 1000);
     await user.save();
     const resetLink = `${clientBaseUrl()}/reset-password?token=${token}&email=${encodeURIComponent(email)}`;
-    console.log(`Password reset link for ${email}: ${resetLink}`);
+    if (!production) console.log(`Password reset link: ${resetLink}`);
     const payload = { message: 'If this email exists, a password reset link has been created. Check the backend logs or connect an email provider for production delivery.' };
     if (process.env.NODE_ENV !== 'production') payload.reset_link = resetLink;
     res.json(payload);
@@ -690,14 +707,15 @@ app.post('/api/auth/reset-password', async (req, res, next) => {
     const email = String(req.body.email || '').toLowerCase().trim();
     const token = String(req.body.token || '');
     const password = String(req.body.password || '');
-    if (!email || !token || password.length < 6) return res.status(400).json({ message: 'Email, reset token, and a password of at least 6 characters are required.' });
+    if (!email || !token || password.length < 8 || Buffer.byteLength(password)>72) return res.status(400).json({ message: 'Email, reset token, and a password of at least 8 characters are required.' });
     const user = await User.findOne({ email });
     if (!user || !user.reset_token_hash || !user.reset_token_expires_at || user.reset_token_expires_at.getTime() < Date.now()) {
       return res.status(400).json({ message: 'Reset link is invalid or expired.' });
     }
     const ok = await bcrypt.compare(token, user.reset_token_hash);
     if (!ok) return res.status(400).json({ message: 'Reset link is invalid or expired.' });
-    user.password_hash = await bcrypt.hash(password, 10);
+    user.password_hash = await bcrypt.hash(password, 12);
+    user.token_version=(user.token_version||0)+1;
     user.reset_token_hash = null;
     user.reset_token_expires_at = null;
     await user.save();
@@ -709,10 +727,11 @@ app.post('/api/auth/change-password', auth, async (req, res, next) => {
   try {
     const current_password = String(req.body.current_password || '');
     const new_password = String(req.body.new_password || '');
-    if (new_password.length < 6) return res.status(400).json({ message: 'New password must be at least 6 characters.' });
+    if (new_password.length < 8 || Buffer.byteLength(new_password)>72) return res.status(400).json({ message: 'New password must be at least 8 characters.' });
     const user = await User.findById(req.user.id);
     if (!user || !(await bcrypt.compare(current_password, user.password_hash))) return res.status(401).json({ message: 'Current password is incorrect.' });
-    user.password_hash = await bcrypt.hash(new_password, 10);
+    user.password_hash = await bcrypt.hash(new_password, 12);
+    user.token_version=(user.token_version||0)+1;
     user.reset_token_hash = null;
     user.reset_token_expires_at = null;
     await user.save();
@@ -759,10 +778,10 @@ async function audit({ business_id, user_id, action, resource, resource_id, deta
   }
 }
 
-async function syncMedicineStock(medicineId, businessId) {
-  const batches = await MedicineBatch.find({ medicine_id: medicineId, business_id: businessId, status: 'active' });
+async function syncMedicineStock(medicineId, businessId, session=null) {
+  const batches = await MedicineBatch.find({ medicine_id: medicineId, business_id: businessId, status: 'active' }).session(session);
   const pieces = batches.reduce((sum, b) => sum + Number(b.available_quantity || 0), 0);
-  await Medicine.findOneAndUpdate({ _id: medicineId, business_id: businessId }, { pieces, updated_at: new Date() });
+  await Medicine.findOneAndUpdate({ _id: medicineId, business_id: businessId }, { pieces, updated_at: new Date() },{session});
   return pieces;
 }
 
@@ -1022,15 +1041,16 @@ async function seedPharmacyMockData(businessId, userId, options = {}) {
   return { seeded: meds.length > 0 || batches.length > 0, medicines: medicineSeeds.length, inserted_medicines: meds.length, batches: batches.length, suppliers: suppliers.length, customers: customers.length };
 }
 
-app.post('/api/pharmacy/mock-data', auth, async (req, res, next) => {
+app.post('/api/pharmacy/mock-data', auth, paidAccess, async (req, res, next) => {
   try {
+    if (production || req.body?.reset) return res.status(403).json({message:"Demo data disabled in production; destructive reset is not allowed."});
     await requirePharmacyBusiness(req.user.id);
     const result = await seedPharmacyMockData(req.user.id, req.user.id, { reset: Boolean(req.body?.reset), skipIfExists: !req.body?.reset });
     res.json({ data: result });
   } catch (err) { next(err); }
 });
 
-app.get('/api/pharmacy/dashboard', auth, async (req, res, next) => {
+app.get('/api/pharmacy/dashboard', auth, paidAccess, async (req, res, next) => {
   try {
     await requirePharmacyBusiness(req.user.id);
     const now = new Date();
@@ -1062,20 +1082,24 @@ app.get('/api/pharmacy/dashboard', auth, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-app.post('/api/pharmacy/pos/sale', auth, async (req, res, next) => {
+app.post('/api/pharmacy/pos/sale', auth, paidAccess, async (req, res, next) => {
+  const session=await mongoose.startSession();
   try {
+    const identity=checkoutIdentity(req);
+    const data=await session.withTransaction(async()=>{
+    const previous=await priorCheckout(req,identity,session); if(previous) return previous;
     await requirePharmacyBusiness(req.user.id);
     const items = Array.isArray(req.body.items) ? req.body.items : [];
-    if (!items.length) return res.status(400).json({ message: 'Cart is empty.' });
+    if (!items.length || items.length>500) throw Object.assign(new Error('Cart is empty or too large.'),{status:400});
     const paymentMethod = String(req.body.payment_method || 'cash');
-    const discount = Math.max(Number(req.body.discount || 0), 0);
+    const discount = Number(req.body.discount || 0); if(!Number.isFinite(discount)||discount<0) throw Object.assign(new Error("Invalid discount"),{status:400});
     const customerId = req.body.customer_id || null;
-    const branchId = req.body.branch_id || null;
+    const branchId = req.body.branch_id || null; if(branchId && !await Branch.exists({_id:branchId,business_id:req.user.id}).session(session)) throw Object.assign(new Error('Invalid branch'),{status:400});
     const customerName = String(req.body.customer_name || '').trim() || null;
     const customerPhone = String(req.body.customer_phone || '').trim() || null;
-    if (paymentMethod === 'due' && !customerId) return res.status(400).json({ message: 'Due sale requires a customer. Select or add a customer first.' });
-    const dbCustomer = customerId ? await Customer.findOne({ _id: customerId, business_id: req.user.id }) : null;
-    if (paymentMethod === 'due' && !dbCustomer) return res.status(404).json({ message: 'Selected due customer was not found.' });
+    if (paymentMethod === 'due' && !customerId) throw Object.assign(new Error('Due sale requires a customer. Select or add a customer first.'),{status:400});
+    const dbCustomer = customerId ? await Customer.findOne({ _id: customerId, business_id: req.user.id }).session(session) : null;
+    if (customerId && !dbCustomer) throw Object.assign(new Error('Selected due customer was not found.'),{status:404});
     const saleCustomerName = customerName || dbCustomer?.name || null;
     const saleCustomerPhone = customerPhone || dbCustomer?.phone || null;
     const dueAmount = paymentMethod === 'due' ? Math.max(Number(req.body.due_amount || 0), 0) : 0;
@@ -1085,36 +1109,38 @@ app.post('/api/pharmacy/pos/sale', auth, async (req, res, next) => {
     const movements = [];
 
     for (const line of items) {
-      const medicine = await Medicine.findOne({ _id: line.medicine_id, business_id: req.user.id, is_active: true });
-      if (!medicine) return res.status(404).json({ message: 'Medicine not found.' });
+      const medicine = await Medicine.findOne({ _id: line.medicine_id, business_id: req.user.id, is_active: true }).session(session);
+      if (!medicine) throw Object.assign(new Error('Medicine not found.'),{status:404});
       const unit = String(line.unit || 'piece');
       const requestedUnits = Math.max(Number(line.quantity || 0), 0);
-      if (requestedUnits <= 0) return res.status(400).json({ message: 'Invalid quantity.' });
+      if (!Number.isSafeInteger(requestedUnits) || requestedUnits <= 0 || !['piece','strip','box','bottle'].includes(unit)) throw Object.assign(new Error('Invalid quantity.'),{status:400});
       const piecesPerStrip = Math.max(Number(medicine.pieces_per_strip || 1), 1);
       const stripsPerBox = Math.max(Number(medicine.strips_per_box || 1), 1);
       const multiplier = unit === 'box' ? piecesPerStrip * stripsPerBox : unit === 'strip' ? piecesPerStrip : 1;
       let piecesNeeded = requestedUnits * multiplier;
       const unitPrice = unit === 'box' && medicine.box_price ? Number(medicine.box_price) : unit === 'strip' && medicine.strip_price ? Number(medicine.strip_price) : Number(medicine.price || medicine.selling_price || 0);
+      if(!Number.isFinite(unitPrice)||unitPrice<0||!Number.isSafeInteger(piecesNeeded)) throw Object.assign(new Error("Invalid medicine pricing or units"),{status:400});
       subtotal += requestedUnits * unitPrice;
-      const batches = await MedicineBatch.find({ business_id: req.user.id, medicine_id: medicine._id, status: 'active', available_quantity: { $gt: 0 }, ...(branchId ? { branch_id: branchId } : {}) }).sort({ expiry_date: 1, created_at: 1 });
+      const batches = await MedicineBatch.find({ business_id: req.user.id, medicine_id: medicine._id, status: 'active', expiry_date: {$gte:new Date().toISOString().slice(0,10)}, available_quantity: { $gt: 0 }, ...(branchId ? { branch_id: branchId } : {}) }).sort({ expiry_date: 1, created_at: 1 }).session(session);
       for (const batch of batches) {
         if (piecesNeeded <= 0) break;
         const take = Math.min(Number(batch.available_quantity || 0), piecesNeeded);
         if (take <= 0) continue;
         batch.available_quantity = Number(batch.available_quantity || 0) - take;
-        await batch.save();
+        await batch.save({session});
         piecesNeeded -= take;
         movements.push({ business_id: req.user.id, branch_id: batch.branch_id, medicine_id: medicine._id, batch_id: batch._id, type: 'sale', quantity_in: 0, quantity_out: take, balance_after: batch.available_quantity, reference: 'FEFO POS sale', created_by: req.user.id });
       }
-      if (piecesNeeded > 0) return res.status(409).json({ message: `Not enough stock for ${medicine.name}.` });
+      if (piecesNeeded > 0) throw Object.assign(new Error(`Not enough stock for ${medicine.name}.`),{status:409});
       saleItems.push({ product_id: medicine._id, name: `${medicine.name} (${requestedUnits} ${unit})`, unit_price: unitPrice, quantity: requestedUnits, line_total: requestedUnits * unitPrice });
-      await syncMedicineStock(medicine._id, req.user.id);
+      await syncMedicineStock(medicine._id, req.user.id,session);
     }
 
-    const total = Math.max(subtotal - discount, 0);
+    if(discount>subtotal || !Number.isFinite(paidAmount)) throw Object.assign(new Error("Invalid checkout amounts"),{status:400});
+    const total = Math.round((subtotal - discount)*100)/100;
     const finalPaidAmount = paymentMethod === 'due' ? Math.min(paidAmount, total) : total;
-    const finalDueAmount = paymentMethod === 'due' ? Math.max(dueAmount || (total - finalPaidAmount), 0) : 0;
-    const sale = await Sale.create({
+    const finalDueAmount = paymentMethod === 'due' ? total-finalPaidAmount : 0;
+    const [sale] = await Sale.create([{
       business_id: req.user.id,
       subtotal,
       discount,
@@ -1128,23 +1154,24 @@ app.post('/api/pharmacy/pos/sale', auth, async (req, res, next) => {
       due_amount: finalDueAmount,
       note: req.body.note || null,
       created_by: req.user.id,
-    });
-    await SaleItem.insertMany(saleItems.map((x) => ({ ...x, sale_id: sale._id, business_id: req.user.id })));
-    if (movements.length) await StockMovement.insertMany(movements.map((m) => ({ ...m, reference: `SALE-${sale._id}` })));
+    }],{session});
+    await SaleItem.insertMany(saleItems.map((x) => ({ ...x, sale_id: sale._id, business_id: req.user.id })),{session});
+    if (movements.length) await StockMovement.insertMany(movements.map((m) => ({ ...m, reference: `SALE-${sale._id}` })),{session});
     if (paymentMethod === 'due' && customerId) {
       const balance = finalDueAmount;
-      await CustomerDue.create({ business_id: req.user.id, customer_id: customerId, sale_id: sale._id, amount: total, paid: finalPaidAmount, balance, status: balance > 0 ? 'open' : 'paid' });
-      await Customer.findOneAndUpdate({ _id: customerId, business_id: req.user.id }, { $inc: { due_balance: balance }, $set: { ...(saleCustomerPhone ? { phone: saleCustomerPhone } : {}) } });
+      await CustomerDue.create([{ business_id: req.user.id, customer_id: customerId, sale_id: sale._id, amount: total, paid: finalPaidAmount, balance, status: balance > 0 ? 'open' : 'paid' }],{session});
+      await Customer.findOneAndUpdate({ _id: customerId, business_id: req.user.id }, { $inc: { due_balance: balance }, $set: { ...(saleCustomerPhone ? { phone: saleCustomerPhone } : {}) } },{session});
     }
-    await audit({ business_id: req.user.id, user_id: req.user.id, action: 'fefo_pos_sale', resource: 'sales', resource_id: sale._id, details: { total, payment_method: paymentMethod, items: saleItems.length }, req });
-    const rows = await SaleItem.find({ sale_id: sale._id, business_id: req.user.id });
-    res.status(201).json({ data: { sale: clean(sale), items: rows.map(clean) } });
-  } catch (err) { next(err); }
+    const rows=await SaleItem.find({sale_id:sale._id,business_id:req.user.id}).session(session);
+    return storeCheckout(req,identity,{sale:clean(sale),items:rows.map(clean)},session);
+    }); res.status(201).json({data});
+  } catch (err) { next(err); } finally {await session.endSession();}
 });
 
 
-app.post('/api/lpg/seed', auth, async (req, res, next) => {
+app.post('/api/lpg/seed', auth, paidAccess, async (req, res, next) => {
   try {
+    if (production || req.body?.reset) return res.status(403).json({message:"Demo data disabled in production; destructive reset is not allowed."});
     await requireLpgBusiness(req.user.id);
     const result = await seedLpgMockData(req.user.id, req.user.id, { reset: Boolean(req.body?.reset), skipIfExists: !req.body?.reset });
     res.json({ data: result });
@@ -1152,7 +1179,7 @@ app.post('/api/lpg/seed', auth, async (req, res, next) => {
 });
 
 
-app.get('/api/lpg/dashboard', auth, async (req, res, next) => {
+app.get('/api/lpg/dashboard', auth, paidAccess, async (req, res, next) => {
   try {
     await requireLpgBusiness(req.user.id);
     const now = new Date();
@@ -1245,20 +1272,21 @@ async function findLpgReturn(line, sold, businessId, session) {
   }).collation({ locale: 'en', strength: 2 }).sort({ _id: 1 }).session(session);
 }
 
-app.get('/api/lpg/pricing-capabilities', auth, async (req, res, next) => {
+app.get('/api/lpg/pricing-capabilities', auth, paidAccess, async (req, res, next) => {
   try {
     await requireLpgBusiness(req.user.id);
     res.json({ data: { split_pricing: true, return_cylinder_id: true } });
   } catch (err) { next(err); }
 });
 
-app.post('/api/lpg/pos/sale', auth, async (req, res, next) => {
+app.post('/api/lpg/pos/sale', auth, paidAccess, async (req, res, next) => {
   let session;
   try {
     const business = await requireLpgBusiness(req.user.id);
     const items = Array.isArray(req.body.items) ? req.body.items : [];
-    if (!items.length) throw lpgCheckoutError(400, 'Cart is empty.');
+    if (!items.length || items.length>500) throw lpgCheckoutError(400, 'Cart is empty.');
     const paymentMethod = String(req.body.payment_method || 'cash').toLowerCase();
+    if(!['cash','card','bkash','nagad','bangla_qr','due','other'].includes(paymentMethod)) throw lpgCheckoutError(400,'Invalid payment method');
     const isDue = paymentMethod === 'due';
     const discount = Number(req.body.discount ?? 0);
     if (!Number.isFinite(discount) || discount < 0) throw lpgCheckoutError(400, 'Invalid discount.');
@@ -1270,7 +1298,9 @@ app.post('/api/lpg/pos/sale', auth, async (req, res, next) => {
     }
 
     session = await mongoose.startSession();
+    const identity=checkoutIdentity(req);
     const data = await session.withTransaction(async () => {
+      const previous=await priorCheckout(req,identity,session); if(previous) return previous;
       const lpgRows = [];
       const saleItems = [];
       let subtotal = 0;
@@ -1293,7 +1323,7 @@ app.post('/api/lpg/pos/sale', auth, async (req, res, next) => {
           throw lpgCheckoutError(409, `Not enough full cylinders for ${cylinder.company} ${cylinder.cylinder_size}.`);
         }
         const mode = line.item_type ?? cylinder.item_type;
-        if (!['refill', 'package'].includes(mode)) throw lpgCheckoutError(400, 'Invalid sale type.');
+        if (!['refill', 'package'].includes(mode) || (mode==='refill' && emptyQty!==qty) || (mode==='package' && emptyQty!==0)) throw lpgCheckoutError(400, 'Invalid sale type or empty return quantity.');
         const { unitPrice, gas, bottle } = lpgUnitPrice(cylinder, line, mode);
         const returned = emptyQty ? await findLpgReturn(line, cylinder, req.user.id, session) : null;
         if (emptyQty && !returned) throw lpgCheckoutError(400, 'Returned cylinder is missing from inventory.');
@@ -1322,7 +1352,8 @@ app.post('/api/lpg/pos/sale', auth, async (req, res, next) => {
         });
       }
 
-      const taxable = Math.max(subtotal - discount, 0);
+      if(discount>subtotal) throw lpgCheckoutError(400,"Discount exceeds subtotal");
+      const taxable = subtotal-discount;
       const useCurrentCharges = items.some((line) => line.item_type != null);
       const percent = (rate) => useCurrentCharges ? taxable * Math.max(Number(rate || 0), 0) / 100 : 0;
       const tax = percent(business.tax_rate);
@@ -1370,7 +1401,7 @@ app.post('/api/lpg/pos/sale', auth, async (req, res, next) => {
         });
         await due.save({ session });
       }
-      return { sale: clean(sale), items: rows.map(clean), lpg_items: details.map(clean) };
+      return storeCheckout(req,identity,{ sale: clean(sale), items: rows.map(clean), lpg_items: details.map(clean) },session);
     });
 
     await audit({
@@ -1387,12 +1418,46 @@ app.post('/api/lpg/pos/sale', auth, async (req, res, next) => {
   }
 });
 
+// Server-priced general POS checkout; all stock and accounting writes commit together.
+app.post('/api/pos/sale', auth, paidAccess, async(req,res,next)=>{
+ const session=await mongoose.startSession();
+ try {
+  const b=req.business; const body=req.body; const items=body.items;
+  const bad=(message,status=400)=>Object.assign(new Error(message),{status});
+  if(!['shop','departmental_store','restaurant','clothing'].includes(b.category)) throw bad('Use category-specific checkout');
+  if(!Array.isArray(items)||!items.length||items.length>500) throw bad('Invalid cart');
+  const method=String(body.payment_method||'cash'); if(!['cash','card','other','bkash','due','mobile','mobile_banking'].includes(method)) throw bad('Invalid payment method');
+  const status=body.status==='kitchen'?'kitchen':method==='due'?'due':'completed';
+  if(status==='kitchen'&&(b.category!=='restaurant'||!String(body.table_number||'').trim())) throw bad('Table required');
+  const key=String(body.request_id||''); if(!/^[a-zA-Z0-9-]{16,100}$/.test(key)) throw bad('Checkout request ID required');
+  const hash=checkoutIdentity(req).hash;
+  const result=await session.withTransaction(async()=>{
+   const old=await CheckoutRequest.findOne({business_id:b._id,key}).session(session);
+   if(old){if(old.hash!==hash) throw bad('Checkout request changed',409); return old.result;}
+   const Model=b.category==='clothing'?Dress:Product; let subtotal=0; const rows=[];
+   for(const line of items){ const qty=Number(line.quantity); if(!Number.isSafeInteger(qty)||qty<1||!mongoose.isValidObjectId(line.product_id)) throw bad('Invalid cart item');
+    const item=await Model.findOneAndUpdate({_id:line.product_id,business_id:b._id,is_active:true,stock:{$gte:qty}},{$inc:{stock:-qty}},{session,new:true});
+    if(!item) throw bad('Item unavailable or insufficient stock',409);
+    const price=Number(item.price); if(!Number.isFinite(price)||price<0) throw bad('Invalid inventory price'); if(line.unit_price!=null && Math.abs(Number(line.unit_price)-price)>0.000001) throw bad('Price changed; reload inventory',409);
+    const lineTotal=Math.round(price*qty*100)/100; subtotal+=lineTotal; rows.push({product_id:item._id,name:item.name,unit_price:price,quantity:qty,line_total:lineTotal});
+   }
+   const money=x=>Math.round(x*100)/100; const discount=Number(body.discount||0); if(!Number.isFinite(discount)||discount<0||discount>subtotal) throw bad('Invalid discount');
+   const taxable=subtotal-discount; const rate=k=>money(taxable*Number(b[k]||0)/100); const tax=rate('tax_rate'),vat=rate('vat_rate'),service=rate('service_charge_rate'),delivery=Number(b.delivery_charge||0); const total=money(taxable+tax+vat+service+delivery);
+   let customer=null; if(method==='due'){customer=await Customer.findOne({_id:body.customer_id,business_id:b._id}).session(session);if(!customer) throw bad('Due customer required');}
+   const [sale]=await Sale.create([{business_id:b._id,subtotal:money(subtotal),discount,total,tax,vat,service_charge:service,delivery_charge:delivery,payment_method:method,status,table_number:body.table_number||null,order_type:status==='kitchen'?'dine_in':b.category,customer_id:customer?._id,customer_name:customer?.name||body.customer_name,customer_phone:customer?.phone,customer_address:customer?.address,note:body.note,service_area:b.service_area,tax_zone:b.tax_zone,paid_amount:status==='completed'?total:0,due_amount:method==='due'?total:0,created_by:req.user.id}],{session});
+   const saved=await SaleItem.insertMany(rows.map(x=>({...x,business_id:b._id,sale_id:sale._id})),{session});
+   if(customer){await Customer.updateOne({_id:customer._id},{$inc:{due_balance:total}},{session});await CustomerDue.create([{business_id:b._id,customer_id:customer._id,sale_id:sale._id,amount:total,paid:0,balance:total,status:'open'}],{session});}
+   const result={sale:clean(sale),items:saved.map(clean)}; await CheckoutRequest.create([{business_id:b._id,key,hash,result}],{session}); return result;
+  }); res.status(201).json({data:result});
+ }catch(e){next(e);}finally{await session.endSession();}
+});
+
 app.get('/api/subscription', auth, async (req, res, next) => {
   try {
     const business = await Business.findById(req.user.id);
     if (!business) return res.status(404).json({ message: 'Business profile not found.' });
     const transactions = await PaymentTransaction.find({ business_id: req.user.id }).sort({ created_at: -1 }).limit(10);
-    res.json({ data: { business: clean(business), subscription: businessSubscriptionInfo(business), transactions: transactions.map(clean) } });
+    res.json({ data: { business: clean(business), subscription: businessSubscriptionInfo(business), plans:{monthly:getPlanConfig('monthly'),yearly:getPlanConfig('yearly')}, transactions: transactions.map(t=>{const x=clean(t);delete x.gateway_response;return x;}) } });
   } catch (err) { next(err); }
 });
 
@@ -1544,30 +1609,24 @@ async function handleBkashReturn(req, res) {
   if (!transaction) return res.redirect(`${clientBaseUrl()}/?subscription=not_found`);
 
   if (callbackStatus === 'cancel' || callbackStatus === 'cancelled') {
-    transaction.status = 'cancelled';
-    transaction.gateway_response = { ...transaction.gateway_response, callback: { ...req.query, ...req.body } };
-    await transaction.save();
+    await PaymentTransaction.updateOne({_id:transaction._id,status:{$ne:'paid'}},{$set:{status:'cancelled'}});
     return res.redirect(`${clientBaseUrl()}/?subscription=cancel`);
   }
   if (callbackStatus === 'failure' || callbackStatus === 'failed') {
-    transaction.status = 'failed';
-    transaction.gateway_response = { ...transaction.gateway_response, callback: { ...req.query, ...req.body } };
-    await transaction.save();
+    await PaymentTransaction.updateOne({_id:transaction._id,status:{$ne:'paid'}},{$set:{status:'failed'}});
     return res.redirect(`${clientBaseUrl()}/?subscription=fail`);
   }
 
   const token = await bkashGrantToken();
   const executed = await bkashApi('/execute', token, { paymentID });
-  const amountOk = !executed?.amount || Number(executed.amount) === Number(transaction.amount);
+  const amountOk = executed?.amount != null && Number(executed.amount) === Number(transaction.amount) && String(executed.paymentID) === String(paymentID) && String(executed.currency || '').toUpperCase() === 'BDT';
 
   if (isBkashSuccess(executed) && amountOk) {
     await activateSubscription(transaction, { ...executed, callback: { ...req.query, ...req.body } });
     return res.redirect(`${clientBaseUrl()}/?subscription=success`);
   }
 
-  transaction.status = 'failed';
-  transaction.gateway_response = { ...transaction.gateway_response, executed, callback: { ...req.query, ...req.body } };
-  await transaction.save();
+  await PaymentTransaction.updateOne({_id:transaction._id,status:{$ne:'paid'}},{$set:{status:'failed'}});
   return res.redirect(`${clientBaseUrl()}/?subscription=validation_failed`);
 }
 
@@ -1581,13 +1640,13 @@ app.post('/api/subscription/bkash/callback', async (req, res, next) => {
 async function handlePaymentReturn(req, res, returnStatus) {
   const tranId = req.body.tran_id || req.query.tran_id;
   const valId = req.body.val_id || req.query.val_id;
-  const transaction = await PaymentTransaction.findOne({ tran_id: tranId });
+  const transaction = await PaymentTransaction.findOne({ tran_id: tranId, gateway:'sslcommerz' });
   if (!transaction) return res.redirect(`${clientBaseUrl()}/?subscription=not_found`);
   if (returnStatus === 'success') {
     let validation = null;
     try { validation = await validateSslCommerzPayment(valId); } catch (err) { validation = { validation_error: err.message }; }
     const validStatuses = ['VALID', 'VALIDATED'];
-    const amountOk = !validation?.amount || Number(validation.amount) === Number(transaction.amount);
+    const amountOk = validation?.amount != null && Number(validation.amount) === Number(transaction.amount) && String(validation.tran_id) === transaction.tran_id && String(validation.currency_type || validation.currency || '').toUpperCase() === 'BDT';
     if (validStatuses.includes(String(validation?.status || '').toUpperCase()) && amountOk) {
       await activateSubscription(transaction, { ...req.body, validation });
       return res.redirect(`${clientBaseUrl()}/?subscription=success`);
@@ -1596,9 +1655,7 @@ async function handlePaymentReturn(req, res, returnStatus) {
     await transaction.save();
     return res.redirect(`${clientBaseUrl()}/?subscription=validation_failed`);
   }
-  transaction.status = returnStatus === 'cancel' ? 'cancelled' : 'failed';
-  transaction.gateway_response = req.body;
-  await transaction.save();
+  await PaymentTransaction.updateOne({_id:transaction._id,status:{$ne:'paid'}},{$set:{status:returnStatus==='cancel'?'cancelled':'failed'}});
   return res.redirect(`${clientBaseUrl()}/?subscription=${returnStatus}`);
 }
 
@@ -1622,11 +1679,11 @@ app.get('/api/subscription/cancel', async (req, res, next) => {
 });
 app.post('/api/subscription/ipn', async (req, res, next) => {
   try {
-    const transaction = await PaymentTransaction.findOne({ tran_id: req.body.tran_id });
+    const transaction = await PaymentTransaction.findOne({ tran_id: req.body.tran_id, gateway:'sslcommerz' });
     if (!transaction) return res.status(404).json({ message: 'Transaction not found.' });
     if (String(req.body.status || '').toUpperCase() === 'VALID') {
       const validation = await validateSslCommerzPayment(req.body.val_id);
-      const amountOk = !validation?.amount || Number(validation.amount) === Number(transaction.amount);
+      const amountOk = validation?.amount != null && Number(validation.amount) === Number(transaction.amount) && String(validation.tran_id) === transaction.tran_id && String(validation.currency_type || validation.currency || '').toUpperCase() === 'BDT';
       if (['VALID', 'VALIDATED'].includes(String(validation?.status || '').toUpperCase()) && amountOk) {
         await activateSubscription(transaction, { ...req.body, validation });
       }
@@ -1635,23 +1692,52 @@ app.post('/api/subscription/ipn', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-app.get('/api/data/:table', auth, async (req, res, next) => {
+const businessFields = new Set(['owner_name','phone','business_name','address','currency','tax_rate','service_charge_rate','vat_rate','delivery_charge','service_area','tax_zone','receipt_message','logo_url']);
+const immutableTables = new Set(['payment_transactions','audit_logs','lpg_cylinder_sales','sale_items','sales']);
+function safePayload(table, item) {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) throw Object.assign(new Error('Invalid payload'),{status:400});
+  const result={};
+  for(const [k,v] of Object.entries(item)) {
+    if(k.startsWith('$') || k.includes('.') || ['_id','id','business_id','created_by','created_at','updated_at','__proto__','constructor','prototype'].includes(k)) continue;
+    if(table==='businesses' && !businessFields.has(k)) {if(k.startsWith('subscription_')||k.startsWith('trial_')||k==='category') throw Object.assign(new Error('Protected business field'),{status:403});continue;}
+    if(!models[table].schema.path(k)) continue;
+    if(v && typeof v==='object' && !Array.isArray(v)) throw Object.assign(new Error('Invalid field '+k),{status:400});
+    if(['stock','full_stock','empty_stock','price','cost','gas_price','bottle_price','available_quantity','pieces','tax_rate','vat_rate','service_charge_rate','delivery_charge','amount','quantity','due_balance','balance_due','selling_price','purchase_price','unit_cost','mrp'].includes(k) && (!Number.isFinite(Number(v)) || Number(v)<0)) throw Object.assign(new Error('Invalid '+k),{status:400});
+    if(k==='currency' && !['BDT','USD','EUR','GBP','INR'].includes(v)) throw Object.assign(new Error('Invalid currency'),{status:400});
+    result[k]=v;
+  } return result;
+}
+// Platform operator endpoint. Disabled unless an independently generated admin key is configured.
+app.get('/api/admin/overview',async(req,res,next)=>{
+ try { const expected=process.env.COUNTERPOS_ADMIN_KEY||''; const provided=req.headers.authorization?.replace(/^Bearer /,'')||'';
+ if(expected.length<48) return res.status(404).json({message:'Not enabled'});
+ const digest=x=>crypto.createHash('sha256').update(x).digest();
+ if(!crypto.timingSafeEqual(digest(expected),digest(provided))) return res.status(401).json({message:'Unauthorized'});
+ const businesses=await Business.find({}).select('business_name category subscription_plan subscription_status trial_ends_at subscription_ends_at created_at').sort({created_at:-1}).limit(2000);
+ const totals={registered:await Business.countDocuments(),active:0,trialing:0,expired:0};
+ const rows=businesses.map(b=>{const state=businessSubscriptionInfo(b);totals[state.status]++;return {id:String(b._id),name:b.business_name,category:b.category,plan:state.plan,status:state.status,days_remaining:state.days_remaining};});
+ const payments=await PaymentTransaction.aggregate([{$match:{status:'paid'}},{$group:{_id:'$currency',amount:{$sum:'$amount'},count:{$sum:1}}}]);
+ res.json({data:{totals,rows,payments,listed:rows.length}});
+ }catch(e){next(e);}
+});
+app.get('/api/data/:table', auth, dataAccess, async (req, res, next) => {
   try {
     const { table } = req.params;
     const Model = models[table];
-    if (!Model) return res.status(404).json({ message: 'Unknown resource.' });
+    if (!Object.hasOwn(models, req.params.table) || !Model) return res.status(404).json({ message: 'Unknown resource.' });
     const q = table === 'businesses' ? { _id: req.user.id } : { business_id: req.user.id };
     for (const [k, v] of Object.entries(req.query)) {
       if (['order', 'ascending', 'limit', 'select', 'single'].includes(k)) continue;
-      if (k === 'id') q._id = v;
-      else if (k === 'business_id') continue;
+      if (k === 'id') {if(table!=='businesses' && typeof v==='string') q._id=v; continue;}
+      else if (k === 'business_id' || k === '_id' || !Model.schema.path(k) || typeof v !== 'string') continue;
       else q[k] = v;
     }
     let query = Model.find(q);
-    if (req.query.order) query = query.sort({ [req.query.order]: req.query.ascending === 'true' ? 1 : -1 });
-    if (req.query.limit) query = query.limit(Number(req.query.limit));
+    if (typeof req.query.order==='string' && Model.schema.path(req.query.order)) query = query.sort({ [req.query.order]: req.query.ascending === 'true' ? 1 : -1 });
+    if (req.query.limit) {const n=Number(req.query.limit); if(!Number.isSafeInteger(n)||n<1||n>10000) return res.status(400).json({message:'Invalid limit'}); query=query.limit(n);}
     const docs = await query;
     let rows = docs.map(clean);
+    if(table==='payment_transactions') rows=rows.map(({gateway_response,...x})=>x);
     if (table === 'sales' && String(req.query.select || '').includes('sale_items')) {
       rows = await Promise.all(rows.map(async (sale) => ({ ...sale, sale_items: (await SaleItem.find({ sale_id: sale.id, business_id: req.user.id })).map(clean) })));
     }
@@ -1659,47 +1745,63 @@ app.get('/api/data/:table', auth, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-app.post('/api/data/:table', auth, async (req, res, next) => {
+app.post('/api/data/:table', auth, dataAccess, async (req, res, next) => {
   try {
     const Model = models[req.params.table];
-    if (!Model) return res.status(404).json({ message: 'Unknown resource.' });
-    const makePayload = (item) => req.params.table === 'businesses' ? item : withBusiness(item, req.user.id);
+    if (!Object.hasOwn(models, req.params.table) || !Model) return res.status(404).json({ message: 'Unknown resource.' });
+    if(req.params.table==='businesses' || immutableTables.has(req.params.table)) return res.status(403).json({message:'Use the dedicated operation endpoint.'});
+    const makePayload = (item) => withBusiness(safePayload(req.params.table,item), req.user.id);
     const input = Array.isArray(req.body) ? req.body : [req.body];
     const docs = await Model.insertMany(input.map(makePayload), { ordered: true });
     res.status(201).json({ data: Array.isArray(req.body) ? docs.map(clean) : clean(docs[0]) });
   } catch (err) { next(err); }
 });
 
-app.patch('/api/data/:table', auth, async (req, res, next) => {
+app.patch('/api/data/:table', auth, dataAccess, async (req, res, next) => {
   try {
     const Model = models[req.params.table];
-    if (!Model) return res.status(404).json({ message: 'Unknown resource.' });
+    if (!Object.hasOwn(models, req.params.table) || !Model) return res.status(404).json({ message: 'Unknown resource.' });
     const q = req.params.table === 'businesses' ? { _id: req.user.id } : { business_id: req.user.id };
-    if (req.query.id) q._id = req.query.id;
-    await Model.updateMany(q, req.body, { runValidators: false });
+    if(req.params.table!=='businesses' && typeof req.query.id!=='string') return res.status(400).json({message:'Record ID required'});
+    if(req.params.table!=='businesses') q._id=req.query.id;
+    let payload=safePayload(req.params.table,req.body);
+    if(immutableTables.has(req.params.table)) {
+      if(req.params.table!=='sales' || !['prepared','completed'].includes(payload.status)) return res.status(403).json({message:'Protected financial record'});
+      q.status=payload.status==='prepared'?'kitchen':{$in:['kitchen','prepared']};
+      payload={status:payload.status,...(payload.status==='completed'?{payment_method:payload.payment_method||'cash'}:{})};
+    }
+    if(!Object.keys(payload).length) return res.status(400).json({message:'No editable fields'});
+    if(req.params.table==='sales' && payload.status==='completed'){const row=await Sale.findOne(q);if(!row) return res.status(409).json({message:'Order not awaiting completion'});payload.paid_amount=row.total;}
+    const changed=await Model.updateOne(q, {$set:payload}, { runValidators: true });
+    if(!changed.matchedCount) return res.status(404).json({message:'Record not found or invalid status'});
+    if(req.params.table==='sales') delete q.status;
     const docs = await Model.find(q).sort({ updated_at: -1 });
     const rows = docs.map(clean);
     res.json({ data: req.query.single === 'true' ? (rows[0] || null) : rows });
   } catch (err) { next(err); }
 });
 
-app.delete('/api/data/:table', auth, async (req, res, next) => {
+app.delete('/api/data/:table', auth, dataAccess, async (req, res, next) => {
   try {
     const Model = models[req.params.table];
-    if (!Model) return res.status(404).json({ message: 'Unknown resource.' });
+    if (!Object.hasOwn(models, req.params.table) || !Model) return res.status(404).json({ message: 'Unknown resource.' });
     const q = req.params.table === 'businesses' ? { _id: req.user.id } : { business_id: req.user.id };
-    if (req.query.id) q._id = req.query.id;
-    const result = await Model.deleteMany(q);
+    if(req.params.table==='businesses' || immutableTables.has(req.params.table)) return res.status(403).json({message:'Protected record'});
+    if(typeof req.query.id!=='string') return res.status(400).json({message:'Record ID required'});
+    q._id=req.query.id;
+    const result = await Model.deleteOne(q);
     res.json({ data: { deleted: result.deletedCount } });
   } catch (err) { next(err); }
 });
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
-app.post('/api/uploads', auth, upload.single('file'), async (req, res, next) => {
+app.post('/api/uploads', auth, paidAccess, upload.single('file'), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
-    const requested = String(req.body.path || `${req.user.id}/${Date.now()}-${req.file.originalname}`);
-    const safe = requested.replace(/\.\./g, '').replace(/^\/+/, '');
+    const ext=({'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif'})[req.file.mimetype];
+    const bytes=req.file.buffer; const hex=bytes.subarray(0,12).toString('hex'); const imageOk=ext==='png'?hex.startsWith('89504e470d0a1a0a'):ext==='jpg'?hex.startsWith('ffd8ff'):ext==='gif'?bytes.subarray(0,3).toString()==='GIF':ext==='webp'?bytes.subarray(0,4).toString()==='RIFF'&&bytes.subarray(8,12).toString()==='WEBP':false;
+    if(!imageOk) return res.status(415).json({message:'Only valid raster images allowed'});
+    const safe=`${req.user.id}/${crypto.randomUUID()}.${ext}`;
     const target = path.join(UPLOAD_ROOT, safe);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, req.file.buffer);
@@ -1708,10 +1810,13 @@ app.post('/api/uploads', auth, upload.single('file'), async (req, res, next) => 
 });
 
 app.use((err, _req, res, _next) => {
-  console.error(err);
-  res.status(err.status || 500).json({ message: err.message || 'Server error' });
+  console.error(err.name || 'Error',err.code || err.status || 500);
+  const status=err.status || (err.name==='ValidationError'||err.name==='CastError'?400:err.code===11000?409:500);
+  res.status(status).json({message:status>=500?'Server error':err.message});
 });
 
 const port = Number(process.env.PORT || 5000);
-await mongoose.connect(process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/counterpos');
-app.listen(port, () => console.log(`CounterPOS API running on port ${port}`));
+await mongoose.connect(process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/counterpos',{serverSelectionTimeoutMS:10000});
+await CheckoutRequest.init();
+const server=app.listen(port, () => console.log(`CounterPOS API running on port ${port}`));
+for(const sig of ['SIGTERM','SIGINT']) process.on(sig,()=>{server.close(async()=>{await mongoose.disconnect();process.exit(0);});setTimeout(()=>process.exit(1),15000).unref();});

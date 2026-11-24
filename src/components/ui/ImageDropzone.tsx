@@ -45,13 +45,13 @@ export default function ImageDropzone({ value, onChange, label = 'Product image'
         const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
         const path = `${business.id}/${fileName}`;
 
-        const { error: upErr } = await supabase.storage.from('product-images').upload(path, file, {
+        const { data: uploaded, error: upErr } = await supabase.storage.from('product-images').upload(path, file, {
           cacheControl: '3600',
           upsert: false,
         });
         if (upErr) throw upErr;
 
-        const { data } = supabase.storage.from('product-images').getPublicUrl(path);
+        const { data } = supabase.storage.from('product-images').getPublicUrl(uploaded!.path);
         onChange(data.publicUrl);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Upload failed.');

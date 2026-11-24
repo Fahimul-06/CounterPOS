@@ -20,6 +20,7 @@ function formatDate(value?: string | null) {
 export default function Subscription({ forcePayment = false, onBack }: Props) {
   const { business, refreshBusiness, signOut } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [plans,setPlans]=useState<any>(null);
   const [subscription, setSubscription] = useState<any>(null);
   const [paying, setPaying] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +29,7 @@ export default function Subscription({ forcePayment = false, onBack }: Props) {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const result = params.get('subscription');
-    if (result === 'success') setNotice('Payment successful. Your subscription is active now.');
+    if (result === 'success') setNotice('Payment returned. Checking your subscription with the server.');
     if (result === 'fail') setError('Payment failed. Please try again.');
     if (result === 'cancel') setError('Payment was cancelled.');
     if (result === 'validation_failed') setError('Payment was received but validation failed. Please contact support before trying again.');
@@ -42,7 +43,7 @@ export default function Subscription({ forcePayment = false, onBack }: Props) {
     supabase.subscription.getStatus().then(({ data, error }) => {
       if (!mounted) return;
       if (error) setError(error.message);
-      setSubscription(data?.subscription ?? null);
+      setSubscription(data?.subscription ?? null);setPlans(data?.plans??null);
       setLoading(false);
       refreshBusiness();
     });
@@ -54,8 +55,8 @@ export default function Subscription({ forcePayment = false, onBack }: Props) {
     const now = Date.now();
     const trialEnds = business?.trial_ends_at ? new Date(business.trial_ends_at).getTime() : 0;
     const paidEnds = business?.subscription_ends_at ? new Date(business.subscription_ends_at).getTime() : 0;
-    const paidActive = paidEnds > now;
-    const trialActive = !paidActive && trialEnds > now;
+    const paidActive = business?.subscription_status==='active' && paidEnds > now;
+    const trialActive = business?.subscription_status==='trialing' && !paidActive && trialEnds > now;
     const endsAt = paidActive ? paidEnds : trialEnds;
     return {
       active: paidActive || trialActive,
@@ -104,10 +105,10 @@ export default function Subscription({ forcePayment = false, onBack }: Props) {
                 <Crown className="h-4 w-4" /> CounterPOS Subscription
               </div>
               <h1 className="text-2xl sm:text-3xl font-bold">
-                {expired ? 'Your free trial has ended' : status?.status === 'trialing' ? 'Your 15-day free trial is active' : 'Your subscription is active'}
+                {expired ? 'Your free trial has ended' : status?.status === 'trialing' ? 'Your 7-day free trial is active' : 'Your subscription is active'}
               </h1>
               <p className="mt-2 text-sm text-slate-200 max-w-2xl">
-                New businesses can use all features free for 15 days. After that, choose a monthly or yearly subscription and pay securely through SSLCommerz or bKash.
+                New businesses can use all features free for 7 days. After that, choose a monthly or yearly subscription and pay securely through SSLCommerz or bKash.
               </p>
             </div>
             <div className="rounded-2xl bg-white/10 p-4 min-w-[220px]">
@@ -140,8 +141,8 @@ export default function Subscription({ forcePayment = false, onBack }: Props) {
           <PlanCard
             plan="monthly"
             title="Monthly"
-            price="৳999"
-            description="Best for testing production with real customers."
+            price={plans?.monthly ? `৳${Number(plans.monthly.amount).toLocaleString()}` : "See checkout"}
+            description="Flexible monthly access for your business."
             benefits={['Full POS access', 'Products, sales, kitchen & tables', 'Pay by SSLCommerz or bKash']}
             payingKey={paying}
             onChoose={(gateway) => startCheckout('monthly', gateway)}
@@ -150,9 +151,9 @@ export default function Subscription({ forcePayment = false, onBack }: Props) {
           <PlanCard
             plan="yearly"
             title="Yearly"
-            price="৳9,999"
+            price={plans?.yearly ? `৳${Number(plans.yearly.amount).toLocaleString()}` : "See checkout"}
             description="Best for long-term business use."
-            benefits={['Full yearly access', 'Lower cost than monthly', 'Pay by SSLCommerz or bKash']}
+            benefits={['Full yearly access', 'One annual payment', 'Pay by SSLCommerz or bKash']}
             payingKey={paying}
             onChoose={(gateway) => startCheckout('yearly', gateway)}
             highlighted

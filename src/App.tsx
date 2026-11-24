@@ -24,6 +24,7 @@ import PharmacyOperations from './components/views/PharmacyOperations';
 import LpgDashboard from './components/views/LpgDashboard';
 import LpgInventory from './components/views/LpgInventory';
 import LpgPOS from './components/views/LpgPOS';
+import PlatformAdmin from './components/views/PlatformAdmin';
 import { Spinner } from './components/ui/Shared';
 
 type AuthRoute = 'signup' | 'signin' | 'app';
@@ -77,12 +78,15 @@ function isSubscriptionActive(business: any) {
   const now = Date.now();
   const paidEnd = business?.subscription_ends_at ? new Date(business.subscription_ends_at).getTime() : 0;
   const trialEnd = business?.trial_ends_at ? new Date(business.trial_ends_at).getTime() : 0;
-  return paidEnd > now || trialEnd > now;
+  return (business?.subscription_status === 'active' && paidEnd > now) || (business?.subscription_status === 'trialing' && trialEnd > now);
 }
 
 function AuthedApp() {
-  const { user, business, loading } = useAuth();
+  const { user, business, loading, refreshBusiness } = useAuth();
   const [view, setView] = useState<View>('dashboard');
+  const [locked,setLocked]=useState(false);
+  useEffect(()=>{const check=()=>{setLocked(true);void refreshBusiness();};window.addEventListener('counterpos-subscription-required',check);return()=>window.removeEventListener('counterpos-subscription-required',check);},[refreshBusiness]);
+  useEffect(()=>{if(business && isSubscriptionActive(business))setLocked(false);},[business]);
 
   if (loading) {
     return (
@@ -100,7 +104,7 @@ function AuthedApp() {
     return <ProfileMissing />;
   }
 
-  if (business && !isSubscriptionActive(business)) {
+  if (business && (locked || !isSubscriptionActive(business))) {
     return <Subscription forcePayment />;
   }
 
@@ -159,6 +163,7 @@ function ProfileMissing() {
 }
 
 export default function App() {
+  if(window.location.pathname==='/platform-admin') return <PlatformAdmin/>;
   return (
     <AuthProvider>
       <Router />

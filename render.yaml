@@ -1,10 +1,11 @@
 services:
   - type: web
     name: counterpos-backend
-    env: node
+    runtime: node
     rootDir: server
     buildCommand: npm install
     startCommand: npm start
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
@@ -17,9 +18,9 @@ services:
       - key: API_PUBLIC_URL
         sync: false
       - key: SUBSCRIPTION_MONTHLY_PRICE
-        value: 999
+        value: 599
       - key: SUBSCRIPTION_YEARLY_PRICE
-        value: 9999
+        value: 9000
       - key: SSLCOMMERZ_STORE_ID
         sync: false
       - key: SSLCOMMERZ_STORE_PASSWORD
@@ -37,7 +38,8 @@ services:
       - key: BKASH_IS_LIVE
         value: false
 
-  - type: static
+  - type: web
+    runtime: static
     name: counterpos-frontend
     rootDir: .
     buildCommand: npm install && npm run build

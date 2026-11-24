@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import {
   Search,
   Plus,
@@ -26,7 +26,7 @@ import {
   Send,
   Table2,
 } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { supabase, apiRequest } from '../../lib/supabase';
 import type { Product, Sale, BusinessCategory, Medicine, Dress } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { formatMoney, classNames, CATEGORY_META } from '../../lib/utils';
@@ -290,6 +290,7 @@ export default function PosTerminal() {
   const itemCount = cart.reduce((acc, l) => acc + l.quantity, 0);
   const hasExtraCharges = totals.serviceChargeAmount > 0 || totals.vatAmount > 0 || totals.delivery > 0 || taxRate > 0;
 
+  const pendingCheckout = useRef<{payload: string; id: string} | null>(null);
   const saveOrder = async (status: 'completed' | 'kitchen') => {
     if (!business) return;
     if (cart.length === 0) {
@@ -303,54 +304,12 @@ export default function PosTerminal() {
     setError(null);
     setSubmitting(true);
     try {
-      const { data: saleData, error: saleError } = await supabase
-        .from('sales')
-        .insert({
-          business_id: business.id,
-          subtotal: totals.subtotal,
-          tax: totals.tax,
-          discount: totals.discountVal,
-          service_charge: totals.serviceChargeAmount,
-          vat: totals.vatAmount,
-          delivery_charge: totals.delivery,
-          total: totals.total,
-          payment_method: payment,
-          status,
-          order_type: status === 'kitchen' ? 'dine_in' : null,
-          table_number: isRestaurant ? tableNumber.trim() || null : null,
-          customer_name: customerName.trim() || null,
-          note: note.trim() || null,
-          service_area: serviceArea.trim() || null,
-          tax_zone: taxZone.trim() || null,
-        })
-        .select()
-        .single();
-      if (saleError) throw saleError;
-      const sale = saleData as Sale;
-
-      const items = cart.map((l) => ({
-        sale_id: sale.id,
-        business_id: business.id,
-        product_id: l.product.id,
-        name: l.product.name,
-        unit_price: Number(l.product.price),
-        quantity: l.quantity,
-        line_total: Number(l.product.price) * l.quantity,
-      }));
-      const { error: itemsError } = await supabase.from('sale_items').insert(items);
-      if (itemsError) throw itemsError;
-
-      const table = tableForCategory(business?.category);
-      const stockCol = table === 'medicines' ? 'pieces' : 'stock';
-      await Promise.all(
-        cart.map((l) =>
-          supabase
-            .from(table)
-            .update({ [stockCol]: Math.max(0, l.product.stock - l.quantity), updated_at: new Date().toISOString() })
-            .eq('id', l.product.id),
-        ),
-      );
-
+      const payload = { items: cart.map(l=>({product_id:l.product.id,quantity:l.quantity,unit_price:Number(l.product.price)})), discount:totals.discountVal, payment_method:payment,status,table_number:tableNumber.trim(),customer_name:customerName.trim(),note:note.trim() };
+      const serialized=JSON.stringify(payload);
+      if(pendingCheckout.current?.payload!==serialized) pendingCheckout.current={payload:serialized,id:crypto.randomUUID()};
+      const response=await apiRequest<{data:{sale:Sale;items:any[]}}>('/pos/sale',{method:'POST',body:JSON.stringify({...payload,request_id:pendingCheckout.current!.id})});
+      const {sale,items}=response.data;
+      pendingCheckout.current=null;
       setProducts((prev) => prev.map((p) => {
         const line = cart.find((l) => l.product.id === p.id);
         if (!line) return p;
