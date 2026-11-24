@@ -1734,6 +1734,24 @@ app.get('/api/mobile/dashboard', auth, paidAccess, async (req,res,next)=>{
   }catch(e){next(e);}
 });
 
+// Read-only due purchase ledger, scoped to the authenticated business and customer.
+app.get('/api/mobile/customers/:id/due-ledger', auth, paidAccess, async (req,res,next)=>{
+  try {
+    if(!/^[a-fA-F0-9]{24}$/.test(req.params.id)) return res.status(400).json({message:'Invalid customer ID'});
+    const scope={business_id:req.user.id,customer_id:req.params.id};
+    const customer=await Customer.findOne({_id:req.params.id,business_id:req.user.id}).lean();
+    if(!customer)return res.status(404).json({message:'Customer not found'});
+    const dues=await CustomerDue.find(scope).sort({created_at:-1,_id:-1}).lean();
+    const ids=[...new Set(dues.filter(d=>d.sale_id).map(d=>String(d.sale_id)))];
+    const sales=await Sale.find({...scope,_id:{$in:ids}}).lean();
+    const saleMap=new Map(sales.map(s=>[String(s._id),s]));
+    const items=await SaleItem.find({business_id:req.user.id,sale_id:{$in:sales.map(s=>s._id)}}).lean();
+    const grouped=new Map();for(const item of items){const key=String(item.sale_id);if(!grouped.has(key))grouped.set(key,[]);grouped.get(key).push({name:item.name,quantity:item.quantity,unit_price:item.unit_price,line_total:item.line_total});}
+    const entries=dues.map(d=>{const key=String(d.sale_id);const sale=saleMap.get(key);return {id:String(d._id),purchase_date:sale?.created_at||null,invoice_no:sale?'#'+key.slice(-8).toUpperCase():'No linked invoice',amount:d.amount,paid:d.paid,balance:d.balance,items:grouped.get(key)||[]};});
+    res.json({data:{customer_balance:customer.due_balance||0,ledger_balance:entries.reduce((sum,d)=>sum+Number(d.balance||0),0),entries}});
+  }catch(e){next(e);}
+});
+
 app.get('/api/data/:table', auth, dataAccess, async (req, res, next) => {
   try {
     const { table } = req.params;
