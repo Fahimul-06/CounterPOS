@@ -146,6 +146,8 @@ export interface LpgCylinder {
   cylinder_size: string;
   company: string;
   item_type: 'refill' | 'package';
+  gas_price?: number;
+  bottle_price?: number;
   price: number;
   cost: number;
   full_stock: number;
@@ -167,6 +169,9 @@ export interface LpgCylinderSale {
   sold_company: string;
   sold_item_type: 'refill' | 'package';
   sold_quantity: number;
+  gas_price?: number;
+  bottle_price?: number;
+  empty_return_cylinder_id?: string | null;
   empty_return_size: string | null;
   empty_return_company: string | null;
   empty_return_quantity: number;

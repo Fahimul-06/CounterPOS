@@ -12,8 +12,8 @@ const LPG_COMPANIES = ['Bashundhara LP Gas', 'Jamuna Gas', 'Omera LPG', 'Beximco
 type FormState = {
   cylinder_size: string;
   company: string;
-  item_type: 'refill' | 'package';
-  price: string;
+  gas_price: string;
+  bottle_price: string;
   cost: string;
   full_stock: string;
   empty_stock: string;
@@ -25,8 +25,8 @@ type FormState = {
 const emptyForm: FormState = {
   cylinder_size: '12 kg',
   company: 'Bashundhara LP Gas',
-  item_type: 'refill',
-  price: '',
+  gas_price: '',
+  bottle_price: '',
   cost: '',
   full_stock: '0',
   empty_stock: '0',
@@ -47,7 +47,6 @@ export default function LpgInventory() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState<'all' | 'refill' | 'package'>('all');
   const [form, setForm] = useState<FormState>(emptyForm);
   const [editing, setEditing] = useState<LpgCylinder | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<LpgCylinder | null>(null);
@@ -89,11 +88,10 @@ export default function LpgInventory() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return items.filter((item) => {
-      if (typeFilter !== 'all' && item.item_type !== typeFilter) return false;
       if (!q) return true;
       return [item.company, item.cylinder_size, item.item_type, item.sku, item.notes].some((v) => String(v || '').toLowerCase().includes(q));
     });
-  }, [items, search, typeFilter]);
+  }, [items, search]);
 
   const update = (key: keyof FormState, value: string) => {
     setForm((f) => ({ ...f, [key]: value }));
@@ -111,8 +109,8 @@ export default function LpgInventory() {
     setForm({
       cylinder_size: item.cylinder_size || '12 kg',
       company: item.company || 'Bashundhara LP Gas',
-      item_type: item.item_type || 'refill',
-      price: String(item.price ?? ''),
+      gas_price: String(item.gas_price ?? (item.item_type === 'refill' ? item.price : '')),
+      bottle_price: String(item.bottle_price ?? ''),
       cost: String(item.cost ?? ''),
       full_stock: String(item.full_stock ?? 0),
       empty_stock: String(item.empty_stock ?? 0),
@@ -126,8 +124,10 @@ export default function LpgInventory() {
   const payload = () => ({
     cylinder_size: form.cylinder_size.trim(),
     company: form.company.trim(),
-    item_type: form.item_type,
-    price: Number(form.price || 0),
+    item_type: 'refill',
+    price: Number(form.gas_price),
+    gas_price: Number(form.gas_price),
+    bottle_price: Number(form.bottle_price),
     cost: Number(form.cost || 0),
     full_stock: Number(form.full_stock || 0),
     empty_stock: Number(form.empty_stock || 0),
@@ -143,6 +143,7 @@ export default function LpgInventory() {
       setError('Cylinder size and company are required.');
       return;
     }
+    if ([form.gas_price, form.bottle_price].some(v => !v.trim() || !Number.isFinite(Number(v)) || Number(v)<0)) { setError("Enter valid gas and bottle prices."); return; }
     setSaving(true);
     const p = payload();
     const res = editing
@@ -343,12 +344,7 @@ export default function LpgInventory() {
                   {LPG_SIZES.map((x) => <option key={x}>{x}</option>)}
                 </select>
               </Field>
-              <Field label="Type">
-                <select value={form.item_type} onChange={(e) => update('item_type', e.target.value as FormState['item_type'])} className="input">
-                  <option value="refill">Refill</option>
-                  <option value="package">Package</option>
-                </select>
-              </Field>
+
             </div>
             <Field label="Company / brand">
               <input
@@ -364,7 +360,8 @@ export default function LpgInventory() {
               <p className="mt-1 text-[11px] font-semibold text-slate-400">Need a new LPG company? Type the new company name here and save.</p>
             </Field>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Selling price"><input value={form.price} onChange={(e) => update('price', e.target.value)} type="number" min="0" className="input" /></Field>
+              <Field label="Gas price"><input required value={form.gas_price} onChange={(e) => update('gas_price', e.target.value)} type="number" min="0" step="0.01" className="input" /></Field>
+              <Field label="Bottle price"><input required value={form.bottle_price} onChange={(e) => update('bottle_price', e.target.value)} type="number" min="0" step="0.01" className="input" /></Field>
               <Field label="Purchase cost"><input value={form.cost} onChange={(e) => update('cost', e.target.value)} type="number" min="0" className="input" /></Field>
             </div>
             <div className="grid grid-cols-3 gap-3">
@@ -392,11 +389,7 @@ export default function LpgInventory() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <input value={search} onChange={(e) => setSearch(e.target.value)} className="input pl-9" placeholder="Search company, size, SKU" />
               </div>
-              <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as typeof typeFilter)} className="input w-32">
-                <option value="all">All</option>
-                <option value="refill">Refill</option>
-                <option value="package">Package</option>
-              </select>
+
             </div>
           </div>
           {filtered.length === 0 ? (
@@ -410,13 +403,14 @@ export default function LpgInventory() {
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="font-black text-slate-950 truncate">{item.company} · {item.cylinder_size}</h3>
-                        <Badge color={item.item_type === 'package' ? 'blue' : 'green'}>{item.item_type}</Badge>
+                        
                         <Badge color={st.color}>{st.label}</Badge>
                       </div>
                       <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                         <Mini label="Full" value={`${item.full_stock} pcs`} />
                         <Mini label="Empty" value={`${item.empty_stock} pcs`} />
-                        <Mini label="Price" value={formatMoney(item.price, currency)} />
+                        <Mini label="Gas" value={item.gas_price == null && item.item_type !== 'refill' ? 'Set price' : formatMoney(item.gas_price ?? item.price, currency)} />
+                        <Mini label="Bottle" value={item.bottle_price == null ? 'Set price' : formatMoney(item.bottle_price, currency)} />
                         <Mini label="SKU" value={item.sku || 'N/A'} />
                       </div>
                     </div>

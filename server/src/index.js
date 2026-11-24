@@ -792,12 +792,10 @@ async function seedLpgMockData(businessId, userId, options = {}) {
     { cylinder_size: '12 kg', company: 'Jamuna Gas', item_type: 'refill', price: 1440, cost: 1310, full_stock: 12, empty_stock: 7, sku: 'LPG-JAM-12-R', low_stock_threshold: 5 },
     { cylinder_size: '12 kg', company: 'Omera LPG', item_type: 'refill', price: 1460, cost: 1330, full_stock: 10, empty_stock: 5, sku: 'LPG-OMERA-12-R', low_stock_threshold: 5 },
     { cylinder_size: '12 kg', company: 'Beximco LPG', item_type: 'refill', price: 1455, cost: 1325, full_stock: 8, empty_stock: 6, sku: 'LPG-BEX-12-R', low_stock_threshold: 4 },
-    { cylinder_size: '12 kg', company: 'Bashundhara LP Gas', item_type: 'package', price: 3600, cost: 3250, full_stock: 6, empty_stock: 2, sku: 'LPG-BASH-12-P', low_stock_threshold: 2 },
-    { cylinder_size: '12 kg', company: 'Jamuna Gas', item_type: 'package', price: 3550, cost: 3200, full_stock: 4, empty_stock: 2, sku: 'LPG-JAM-12-P', low_stock_threshold: 2 },
     { cylinder_size: '5.5 kg', company: 'Omera LPG', item_type: 'refill', price: 720, cost: 650, full_stock: 9, empty_stock: 4, sku: 'LPG-OMERA-55-R', low_stock_threshold: 3 },
     { cylinder_size: '35 kg', company: 'Bashundhara LP Gas', item_type: 'refill', price: 4200, cost: 3900, full_stock: 5, empty_stock: 3, sku: 'LPG-BASH-35-R', low_stock_threshold: 2 },
     { cylinder_size: '45 kg', company: 'Jamuna Gas', item_type: 'refill', price: 5400, cost: 5050, full_stock: 3, empty_stock: 2, sku: 'LPG-JAM-45-R', low_stock_threshold: 2 },
-  ].map((item) => ({ ...item, business_id: businessId, created_by: userId, notes: 'Bangladesh LPG demo stock', is_active: true }));
+  ].map((item) => ({ ...item, gas_price: item.price, bottle_price: ({"5.5 kg": 1000, "12 kg": 2150, "35 kg": 5000, "45 kg": 6500})[item.cylinder_size], business_id: businessId, created_by: userId, notes: 'Bangladesh LPG demo stock', is_active: true }));
   const docs = await LpgCylinder.insertMany(rows);
   return { inserted: docs.length, skipped: false };
 }

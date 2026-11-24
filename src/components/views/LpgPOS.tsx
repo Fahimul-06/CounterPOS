@@ -11,6 +11,8 @@ type PaymentMethod = 'cash' | 'card' | 'bkash' | 'nagad' | 'bangla_qr' | 'due' |
 type CartLine = {
   cylinder: LpgCylinder;
   quantity: number;
+  mode: 'refill' | 'package';
+  empty_return_cylinder_id: string;
   empty_return_quantity: number;
   empty_return_size: string;
   empty_return_company: string;
@@ -18,8 +20,8 @@ type CartLine = {
 
 type CompletedSale = { sale: Sale; items: SaleItem[]; lpg_items: LpgCylinderSale[] };
 
-const EMPTY_SIZES = ['5.5 kg', '12 kg', '20 kg', '25 kg', '35 kg', '45 kg'];
-const EMPTY_COMPANIES = ['Bashundhara LP Gas', 'Jamuna Gas', 'Omera LPG', 'Beximco LPG', 'Navana LPG', 'Laugfs Gas', 'Totalgaz', 'Orion LPG', 'Petromax LPG', 'Other'];
+const gasPrice = (c: LpgCylinder) => c.gas_price ?? (c.item_type === 'refill' ? c.price : NaN);
+const unitPrice = (l: CartLine) => gasPrice(l.cylinder) + (l.mode === 'package' ? (l.cylinder.bottle_price ?? NaN) : 0);
 
 export default function LpgPOS() {
   const { business } = useAuth();
@@ -73,26 +75,22 @@ export default function LpgPOS() {
     return items.filter((item) => [item.company, item.cylinder_size, item.item_type, item.sku].some((v) => String(v || '').toLowerCase().includes(q)));
   }, [items, search]);
 
-  const companyOptions = useMemo(() => {
-    const names = new Set<string>(EMPTY_COMPANIES.filter((x) => x !== 'Other'));
-    items.forEach((item) => item.company && names.add(item.company));
-    cart.forEach((line) => line.empty_return_company && names.add(line.empty_return_company));
-    return Array.from(names).sort((a, b) => a.localeCompare(b));
-  }, [items, cart]);
-
-  const subtotal = cart.reduce((sum, line) => sum + line.quantity * Number(line.cylinder.price || 0), 0);
+  const subtotal = cart.reduce((sum, line) => sum + line.quantity * unitPrice(line), 0);
   const discountValue = Math.max(Number(discount || 0), 0);
-  const total = Math.max(subtotal - discountValue, 0);
+  const taxable = Math.max(subtotal - discountValue, 0);
+  const charges = taxable * (Math.max(business?.tax_rate || 0,0) + Math.max(business?.vat_rate || 0,0) + Math.max(business?.service_charge_rate || 0,0))/100 + Math.max(business?.delivery_charge || 0,0);
+  const total = taxable + charges;
 
   const addToCart = (item: LpgCylinder) => {
     if (Number(item.full_stock || 0) <= 0) return;
+    if (!Number.isFinite(gasPrice(item))) { setError("Set gas price in inventory first."); return; }
     setError(null);
     setCart((prev) => {
       const found = prev.find((x) => x.cylinder.id === item.id);
       if (found) {
-        return prev.map((x) => x.cylinder.id === item.id ? { ...x, quantity: Math.min(x.quantity + 1, Number(item.full_stock || 0)), empty_return_quantity: Math.min(x.empty_return_quantity + 1, Number(item.full_stock || 0)) } : x);
+        return prev.map((x) => x.cylinder.id === item.id ? { ...x, quantity: Math.min(x.quantity + 1, Number(item.full_stock || 0)), empty_return_quantity: x.mode === 'refill' ? Math.min(x.quantity + 1, Number(item.full_stock || 0)) : 0 } : x);
       }
-      return [...prev, { cylinder: item, quantity: 1, empty_return_quantity: item.item_type === 'refill' ? 1 : 0, empty_return_size: item.cylinder_size, empty_return_company: item.company }];
+      return [...prev, { cylinder: item, quantity: 1, mode: 'refill', empty_return_cylinder_id: item.id, empty_return_quantity: 1, empty_return_size: item.cylinder_size, empty_return_company: item.company }];
     });
   };
 
@@ -104,7 +102,7 @@ export default function LpgPOS() {
     setCart((prev) => prev.map((x) => {
       if (x.cylinder.id !== id) return x;
       const qty = Math.max(1, Math.min(x.quantity + delta, Number(x.cylinder.full_stock || 0)));
-      return { ...x, quantity: qty, empty_return_quantity: Math.min(x.empty_return_quantity, qty) };
+      return { ...x, quantity: qty, empty_return_quantity: x.mode === 'refill' ? qty : 0 };
     }));
   };
 
@@ -149,7 +147,9 @@ export default function LpgPOS() {
         items: cart.map((line) => ({
           cylinder_id: line.cylinder.id,
           quantity: line.quantity,
-          unit_price: line.cylinder.price,
+          unit_price: unitPrice(line),
+          item_type: line.mode,
+          empty_return_cylinder_id: line.empty_return_quantity ? line.empty_return_cylinder_id : null,
           empty_return_quantity: line.empty_return_quantity,
           empty_return_size: line.empty_return_size,
           empty_return_company: line.empty_return_company,
@@ -279,7 +279,7 @@ export default function LpgPOS() {
       <tbody>
         ${lines.map((x, i) => `<tr>
           <td>${i + 1}</td>
-          <td><b>${escapeHtml(x.sold_company)} ${escapeHtml(x.sold_size)} ${escapeHtml(x.sold_item_type)}</b><div class="empty-return">Empty received: ${Number(x.empty_return_quantity || 0)} · ${escapeHtml(x.empty_return_company || '-')} ${escapeHtml(x.empty_return_size || '')}</div></td>
+          <td><b>${escapeHtml(x.sold_company)} ${escapeHtml(x.sold_size)} ${escapeHtml(x.sold_item_type)}</b><div class="empty-return">${x.gas_price != null ? `Gas: ${formatMoney(x.gas_price,currency)}${x.bottle_price != null ? ` · Bottle: ${formatMoney(x.bottle_price,currency)}` : ""}<br>` : ""}Empty received: ${Number(x.empty_return_quantity || 0)} · ${escapeHtml(x.empty_return_company || '-')} ${escapeHtml(x.empty_return_size || '')}</div></td>
           <td class="right">${Number(x.sold_quantity || 0)}</td>
           <td class="right">${formatMoney(Number(x.unit_price || 0), currency)}</td>
           <td class="right"><b>${formatMoney(Number(x.line_total || 0), currency)}</b></td>
@@ -417,13 +417,13 @@ export default function LpgPOS() {
     <PageContainer className="max-w-[1600px]">
       <PageHeader title="LPG Cylinder POS" subtitle="Sell full/refill cylinders and record which empty cylinder returned to the shop against every sale." />
       {error && <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700 flex gap-2"><AlertCircle className="h-4 w-4 mt-0.5" />{error}</div>}
-      <datalist id="lpg-empty-company-options">{companyOptions.map((x) => <option key={x} value={x} />)}</datalist>
+      
       <div className="grid gap-5 xl:grid-cols-[1fr_430px]">
         <div className="space-y-4">
           <Card className="p-4">
             <div className="relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} className="input pl-12 h-13 text-base" placeholder="Search by company, size, SKU, refill/package" />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} className="input pl-12 h-13 text-base" placeholder="Search by company, size, SKU" />
             </div>
           </Card>
           <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
@@ -433,14 +433,14 @@ export default function LpgPOS() {
                 <button key={item.id} onClick={() => addToCart(item)} disabled={out} className={classNames('text-left rounded-3xl border bg-white p-4 shadow-soft transition-all hover:-translate-y-0.5 hover:shadow-soft-lg disabled:cursor-not-allowed', out ? 'border-rose-200 bg-rose-50/80' : 'border-white hover:border-amber-200')}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-amber-500 to-red-500 grid place-items-center text-white"><Flame className="h-6 w-6" /></div>
-                    <Badge color={out ? 'red' : item.item_type === 'package' ? 'blue' : 'green'}>{out ? 'StockOut' : item.item_type}</Badge>
+                    <Badge color={out ? 'red' : 'green'}>{out ? 'StockOut' : 'In stock'}</Badge>
                   </div>
                   <h3 className="mt-3 font-black text-slate-950">{item.company}</h3>
                   <p className="text-sm font-bold text-slate-600">{item.cylinder_size} · {item.sku || 'No SKU'}</p>
                   <div className="mt-4 grid grid-cols-3 gap-2 text-center">
                     <Mini label="Full" value={String(item.full_stock)} danger={out} />
                     <Mini label="Empty" value={String(item.empty_stock)} />
-                    <Mini label="Price" value={formatMoney(item.price, currency)} />
+                    <Mini label="Gas" value={Number.isFinite(gasPrice(item)) ? formatMoney(gasPrice(item), currency) : 'Set price'} />
                   </div>
                 </button>
               );
@@ -457,7 +457,7 @@ export default function LpgPOS() {
               {cart.map((line) => (
                 <div key={line.cylinder.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
                   <div className="flex items-start justify-between gap-2">
-                    <div><p className="font-black text-slate-950">{line.cylinder.company}</p><p className="text-xs font-bold text-slate-500">{line.cylinder.cylinder_size} · {line.cylinder.item_type}</p></div>
+                    <div><p className="font-black text-slate-950">{line.cylinder.company}</p><p className="text-xs font-bold text-slate-500">{line.cylinder.cylinder_size} · {line.mode}</p></div>
                     <button onClick={() => removeLine(line.cylinder.id)} className="rounded-xl p-2 text-rose-500 hover:bg-rose-50"><Trash2 className="h-4 w-4" /></button>
                   </div>
                   <div className="mt-3 grid grid-cols-[auto_1fr_auto] items-center gap-2">
@@ -465,23 +465,18 @@ export default function LpgPOS() {
                     <div className="text-center rounded-xl bg-white py-2 text-sm font-black">Sold: {line.quantity}</div>
                     <Button size="sm" variant="secondary" onClick={() => changeQty(line.cylinder.id, 1)}><Plus className="h-3 w-3" /></Button>
                   </div>
-                  <div className="mt-3 rounded-2xl bg-white p-3 space-y-2">
-                    <p className="text-[11px] font-black uppercase tracking-wide text-slate-400">Empty cylinder received against this sale</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <input
-                        value={line.empty_return_company}
-                        onChange={(e) => updateLine(line.cylinder.id, { empty_return_company: e.target.value })}
-                        className="input text-xs"
-                        list="lpg-empty-company-options"
-                        placeholder="Empty brand/company"
-                      />
-                      <select value={line.empty_return_size} onChange={(e) => updateLine(line.cylinder.id, { empty_return_size: e.target.value })} className="input text-xs">
-                        {EMPTY_SIZES.map((x) => <option key={x}>{x}</option>)}
-                      </select>
-                    </div>
-                    <input type="number" min="0" max={line.quantity} value={line.empty_return_quantity} onChange={(e) => updateLine(line.cylinder.id, { empty_return_quantity: Math.min(Number(e.target.value || 0), line.quantity) })} className="input" placeholder="Empty quantity received" />
+                  <div className="grid grid-cols-2 gap-2 mt-3">
+                    {(['refill','package'] as const).map(mode => <Button key={mode} variant={line.mode === mode ? 'primary' : 'outline'} onClick={() => { if(mode === 'package' && !Number.isFinite(line.cylinder.bottle_price ?? NaN)) {setError('Set bottle price in inventory first.');return;} updateLine(line.cylinder.id,{mode,empty_return_quantity:mode==='refill'?line.quantity:0}); }}>{mode === 'refill' ? 'Refill' : 'Package'}</Button>)}
                   </div>
-                  <div className="mt-3 flex items-center justify-between text-sm"><span className="text-slate-500">Line total</span><b>{formatMoney(line.quantity * line.cylinder.price, currency)}</b></div>
+                  <p className="mt-2 text-sm">Gas: {formatMoney(gasPrice(line.cylinder),currency)} × {line.quantity}</p>
+                  {line.mode === 'package' && <p className="text-sm">Bottle: {formatMoney(line.cylinder.bottle_price ?? 0,currency)} × {line.quantity}</p>}
+                  {line.mode === 'refill' && <div className="mt-3 rounded-2xl bg-white p-3 space-y-2">
+                    <p className="text-xs font-bold">Empty cylinder returned · {line.empty_return_quantity}</p>
+                    <select className="input" value={line.empty_return_cylinder_id} onChange={e=>{const returned=items.find(i=>i.id===e.target.value);if(returned)updateLine(line.cylinder.id,{empty_return_cylinder_id:returned.id,empty_return_company:returned.company,empty_return_size:returned.cylinder_size});}}>
+                      {items.map(i=><option key={i.id} value={i.id}>{i.company} · {i.cylinder_size} · {i.sku || 'No SKU'}</option>)}
+                    </select>
+                  </div>}
+                  <div className="mt-3 flex items-center justify-between text-sm"><span className="text-slate-500">Line total</span><b>{formatMoney(line.quantity * unitPrice(line), currency)}</b></div>
                 </div>
               ))}
             </div>}
@@ -524,6 +519,7 @@ export default function LpgPOS() {
             <div className="rounded-3xl bg-slate-950 p-4 text-white space-y-2">
               <div className="flex justify-between text-sm text-slate-300"><span>Subtotal</span><span>{formatMoney(subtotal, currency)}</span></div>
               <div className="flex justify-between text-sm text-slate-300"><span>Discount</span><span>{formatMoney(discountValue, currency)}</span></div>
+              <div className="flex justify-between text-sm text-slate-300"><span>Taxes & charges</span><span>{formatMoney(charges, currency)}</span></div>
               <div className="flex justify-between border-t border-white/10 pt-3 text-xl font-black"><span>Total</span><span>{formatMoney(total, currency)}</span></div>
             </div>
             <Button size="lg" onClick={completeSale} disabled={submitting || !cart.length} className="w-full">{submitting ? 'Completing…' : 'Complete sale & receipt'}</Button>
